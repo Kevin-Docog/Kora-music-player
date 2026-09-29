@@ -5,7 +5,7 @@ import {
 } from "expo-audio";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { createContext, PropsWithChildren, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { getNextQueueIndex, type RepeatMode } from "@/lib/playback-utils";
+import { getManualNextIndex, getNextQueueIndex, getShuffleNextIndex, orderBySavedIds, type RepeatMode } from "@/lib/playback-utils";
 
 export type QueueTrack = {
   id: string;
@@ -31,10 +31,15 @@ type AudioPlayerContextValue = {
   repeatMode: RepeatMode;
   togglePlay: () => void;
   playTrack: (track: QueueTrack) => void;
+  /** Plays `startId` and queues `ordered` first (in that order), followed by any other queued songs. */
+  playList: (ordered: QueueTrack[], startId: string) => void;
+  /** Like playList, but also switches to repeat-all so the mix plays in its own order. */
+  playMix: (ordered: QueueTrack[], startId: string) => void;
   next: () => void;
   previous: () => void;
   addToQueue: (track: QueueTrack) => void;
   replaceQueue: (tracks: QueueTrack[]) => void;
+  mergeIntoQueue: (tracks: QueueTrack[]) => void;
   updateQueueTrack: (trackId: string, patch: Partial<QueueTrack>) => void;
   removeFromQueue: (trackId: string) => void;
   clearQueue: () => void;
@@ -57,6 +62,7 @@ const AudioProgressContext = createContext<AudioProgressValue>({ position: 0, du
 const LAST_TRACK_KEY = "kora.audio.last-track";
 const LAST_POSITION_KEY = "kora.audio.last-position";
 const AUDIO_SETTINGS_KEY = "kora.audio.settings";
+const QUEUE_ORDER_KEY = "kora.audio.queue-order";
 const PRESET_GAIN: Record<string, number> = { Flat: 1, Warm: 0.92, Vocal: 0.96, "Bass boost": 0.88 };
 
 export function AudioPlayerProvider({ children }: PropsWithChildren) {
@@ -85,9 +91,18 @@ export function AudioPlayerProvider({ children }: PropsWithChildren) {
   const durationRef = useRef(0);
   const historyRef = useRef<string[]>([]);
   const finishHandledRef = useRef(false);
+  const shufflePlayedRef = useRef<Set<string>>(new Set());
+  const customOrderRef = useRef(false);
+  const savedOrderRef = useRef<string[] | null>(null);
+  const orderSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const repeatModeRef = useRef<RepeatMode>("shuffle");
   const nextRef = useRef<(auto?: boolean) => void>(() => undefined);
-  useEffect(() => { repeatModeRef.current = repeatMode; }, [repeatMode]);
+  useEffect(() => {
+    repeatModeRef.current = repeatMode;
+    // Switching modes starts a fresh shuffle cycle from the song that is playing now.
+    const currentId = queueRef.current[currentIndexRef.current]?.id;
+    shufflePlayedRef.current = new Set(currentId ? [currentId] : []);
+  }, [repeatMode]);
   useEffect(() => { positionRef.current = position; durationRef.current = duration; }, [position, duration]);
 
   useEffect(() => {
@@ -117,6 +132,38 @@ export function AudioPlayerProvider({ children }: PropsWithChildren) {
       } catch { /* ignore invalid saved playback state */ }
     }).catch(() => undefined);
   }, []);
+
+  // Restore the queue order the person last chose (e.g. Song A–Z) so it survives closing the app.
+  useEffect(() => {
+    AsyncStorage.getItem(QUEUE_ORDER_KEY).then((saved) => {
+      if (!saved) return;
+      let ids: unknown;
+      try { ids = JSON.parse(saved); } catch { return; }
+      if (!Array.isArray(ids) || ids.length === 0) return;
+      const savedIds = ids.filter((id): id is string => typeof id === "string");
+      savedOrderRef.current = savedIds;
+      // The library may already have filled the queue by now; reorder it in place, keeping the current song.
+      if (!customOrderRef.current && queueRef.current.length > 1) {
+        const currentId = queueRef.current[currentIndexRef.current]?.id;
+        const reordered = orderBySavedIds(queueRef.current, savedIds);
+        customOrderRef.current = true;
+        queueRef.current = reordered;
+        setQueue(reordered);
+        const index = currentId ? reordered.findIndex((item) => item.id === currentId) : -1;
+        if (index >= 0) { currentIndexRef.current = index; setCurrentIndex(index); }
+      }
+    }).catch(() => undefined);
+  }, []);
+
+  // Save the chosen order (debounced; scans can change the queue many times in a row).
+  useEffect(() => {
+    if (!customOrderRef.current || queue.length === 0) return;
+    if (orderSaveTimerRef.current) clearTimeout(orderSaveTimerRef.current);
+    orderSaveTimerRef.current = setTimeout(() => {
+      void AsyncStorage.setItem(QUEUE_ORDER_KEY, JSON.stringify(queueRef.current.map((item) => item.id))).catch(() => undefined);
+    }, 1500);
+    return () => { if (orderSaveTimerRef.current) clearTimeout(orderSaveTimerRef.current); };
+  }, [queue]);
 
   useEffect(() => {
     void AsyncStorage.getItem(AUDIO_SETTINGS_KEY).then((saved) => {
@@ -162,24 +209,16 @@ export function AudioPlayerProvider({ children }: PropsWithChildren) {
     setDuration(0);
   }, []);
 
-  useEffect(() => {
-    setAudioModeAsync({
-      playsInSilentMode: true,
-      interruptionMode: "doNotMix",
-      interruptionModeAndroid: "doNotMix",
-      allowsRecording: false,
-      shouldPlayInBackground: true,
-      shouldRouteThroughEarpiece: false,
-    }).catch(() => undefined);
-
-    return () => stopPlayer();
-  }, [stopPlayer]);
+  // Audio mode is applied only after saved settings load (see the hydration effect above),
+  // so a saved "background audio off" is never overridden at launch.
+  useEffect(() => () => stopPlayer(), [stopPlayer]);
 
   const loadTrack = useCallback((index: number, autoplay: boolean) => {
     const track = queueRef.current[index];
     if (!track || !track.source) return;
 
     lastTrackIdRef.current = track.id;
+    shufflePlayedRef.current.add(track.id);
     if (resumeTrackIdRef.current !== track.id) resumePositionRef.current = 0;
     void AsyncStorage.setItem(LAST_TRACK_KEY, JSON.stringify(track)).catch(() => undefined);
 
@@ -250,9 +289,21 @@ export function AudioPlayerProvider({ children }: PropsWithChildren) {
   // song, even in repeat-one mode (repeat-one only applies when a song finishes by itself).
   const next = useCallback((auto = false) => {
     const mode = repeatModeRef.current;
-    const effectiveMode: RepeatMode = !auto && mode === "one" ? "all" : mode;
-    const nextIndex = getNextQueueIndex(currentIndexRef.current, queueRef.current.length, effectiveMode);
-    if (nextIndex < 0) return;
+    let nextIndex: number;
+    if (mode === "shuffle") {
+      const pick = getShuffleNextIndex(queueRef.current.map((item) => item.id), currentIndexRef.current, shufflePlayedRef.current);
+      nextIndex = pick.index;
+      shufflePlayedRef.current = pick.played;
+    } else {
+      nextIndex = auto
+        ? getNextQueueIndex(currentIndexRef.current, queueRef.current.length, mode)
+        : getManualNextIndex(currentIndexRef.current, queueRef.current.length, mode);
+    }
+    if (nextIndex < 0) {
+      // Nothing to advance to (e.g. empty queue): make sure the UI doesn't stay stuck on "playing".
+      setIsPlaying(false);
+      return;
+    }
     pushHistory();
     loadTrack(nextIndex, true);
   }, [loadTrack, pushHistory]);
@@ -290,7 +341,50 @@ export function AudioPlayerProvider({ children }: PropsWithChildren) {
     loadTrack(nextQueue.length - 1, true);
   }, [loadTrack, pushHistory]);
 
-  const replaceQueue = useCallback((tracks: QueueTrack[]) => {
+  const playList = useCallback((ordered: QueueTrack[], startId: string) => {
+    const list = ordered.filter((item) => item.source);
+    const startIndex = list.findIndex((item) => item.id === startId);
+    if (startIndex < 0) return;
+    if (queueRef.current[currentIndexRef.current]?.id !== startId) pushHistory();
+    // Songs that weren't in the given list stay queued after it, so the full library stays available.
+    const inList = new Set(list.map((item) => item.id));
+    const rest = queueRef.current.filter((item) => !inList.has(item.id));
+    const nextQueue = [...list, ...rest];
+    customOrderRef.current = true;
+    shufflePlayedRef.current = new Set();
+    queueRef.current = nextQueue;
+    setQueue(nextQueue);
+    loadTrack(startIndex, true);
+  }, [loadTrack, pushHistory]);
+
+  const playMix = useCallback((ordered: QueueTrack[], startId: string) => {
+    setRepeatMode("all");
+    repeatModeRef.current = "all";
+    playList(ordered, startId);
+  }, [playList]);
+
+  const replaceQueue = useCallback((incoming: QueueTrack[]) => {
+    let tracks = incoming;
+    if (!customOrderRef.current && savedOrderRef.current && incoming.length > 0) {
+      // First library load after launch: apply the order saved last time.
+      tracks = orderBySavedIds(incoming, savedOrderRef.current);
+      customOrderRef.current = true;
+    } else if (customOrderRef.current && queueRef.current.length > 0 && incoming.length > 0) {
+      // The person picked an order (e.g. Song A–Z). Keep it through rescans: existing songs stay in
+      // their current order (with refreshed details) and any brand-new songs go at the end.
+      const byId = new Map(incoming.map((item) => [item.id, item]));
+      const seen = new Set<string>();
+      const ordered: QueueTrack[] = [];
+      for (const existing of queueRef.current) {
+        const fresh = byId.get(existing.id);
+        if (fresh) { ordered.push(fresh); seen.add(existing.id); }
+      }
+      for (const item of incoming) if (!seen.has(item.id)) ordered.push(item);
+      tracks = ordered;
+    } else if (incoming.length === 0) {
+      customOrderRef.current = false;
+      savedOrderRef.current = null;
+    }
     const previousId = queueRef.current[currentIndexRef.current]?.id;
     const preferredId = previousId || lastTrackIdRef.current;
     const nextIndex = preferredId ? tracks.findIndex((track) => track.id === preferredId) : -1;
@@ -314,6 +408,18 @@ export function AudioPlayerProvider({ children }: PropsWithChildren) {
     setCurrentIndex(0);
     if (playerRef.current) stopPlayer();
   }, [stopPlayer]);
+
+  // Adds songs the queue doesn't have yet (used while a scan is still running). Never removes
+  // anything and never touches the current song, so playback is not interrupted.
+  const mergeIntoQueue = useCallback((tracks: QueueTrack[]) => {
+    if (tracks.length === 0) return;
+    const known = new Set(queueRef.current.map((item) => item.id));
+    const fresh = tracks.filter((track) => track.source && !known.has(track.id));
+    if (fresh.length === 0) return;
+    const nextQueue = [...queueRef.current, ...fresh];
+    queueRef.current = nextQueue;
+    setQueue(nextQueue);
+  }, []);
 
   const updateQueueTrack = useCallback((trackId: string, patch: Partial<QueueTrack>) => {
     const nextQueue = queueRef.current.map((track) => track.id === trackId ? { ...track, ...patch } : track);
@@ -423,10 +529,13 @@ export function AudioPlayerProvider({ children }: PropsWithChildren) {
     repeatMode,
     togglePlay,
     playTrack,
+    playList,
+    playMix,
     next: manualNext,
     previous,
     addToQueue,
     replaceQueue,
+    mergeIntoQueue,
     updateQueueTrack,
     removeFromQueue,
     clearQueue,
@@ -439,7 +548,7 @@ export function AudioPlayerProvider({ children }: PropsWithChildren) {
     setSmoothTransitions,
     setEqualizerPreset,
     seekTo,
-  }), [addToQueue, backgroundAudioEnabled, clearQueue, currentIndex, equalizerPreset, isBuffering, isPlaying, manualNext, normalizeVolume, playTrack, previous, queue, removeFromQueue, repeatMode, replaceQueue, seekTo, setBackgroundAudioEnabled, setEqualizerPreset, setNormalizeVolume, setSmoothTransitions, smoothTransitions, togglePlay, toggleRepeatMode, updateQueueTrack]);
+  }), [addToQueue, backgroundAudioEnabled, clearQueue, currentIndex, equalizerPreset, isBuffering, isPlaying, manualNext, normalizeVolume, playList, playMix, playTrack, previous, queue, removeFromQueue, repeatMode, replaceQueue, mergeIntoQueue, seekTo, setBackgroundAudioEnabled, setEqualizerPreset, setNormalizeVolume, setSmoothTransitions, smoothTransitions, togglePlay, toggleRepeatMode, updateQueueTrack]);
 
   const progress = useMemo<AudioProgressValue>(() => ({ position, duration }), [position, duration]);
 

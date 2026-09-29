@@ -16,7 +16,7 @@ export default function PlaylistsScreen() {
   const [renameName, setRenameName] = useState("");
   const [selectedPlaylist, setSelectedPlaylist] = useState<ReturnType<typeof usePlaylistController>["playlists"][number] | null>(null);
   const [notice, setNotice] = useState("");
-  const { queue, playTrack } = useAudioPlayerController();
+  const { queue, playList } = useAudioPlayerController();
   const { playlists, createPlaylist: createPlaylistInContext, renamePlaylist: renamePlaylistInContext, deletePlaylist, removeTrackFromPlaylist } = usePlaylistController();
 
   const createPlaylist = () => {
@@ -45,11 +45,16 @@ export default function PlaylistsScreen() {
     setNotice("Playlist deleted");
   };
 
+  // Songs of the open playlist, in playlist order.
+  const getPlaylistTracks = () => (selectedPlaylist?.trackIds ?? []).map((id) => queue.find((item) => item.id === id)).filter((item): item is (typeof queue)[number] => Boolean(item));
+
   const playPlaylist = () => {
-    const firstId = selectedPlaylist?.trackIds[0];
-    const track = queue.find((item) => item.id === firstId) ?? queue[0];
-    if (track) playTrack(track);
+    const list = getPlaylistTracks();
+    if (list.length === 0) { setNotice("Add songs to this playlist first"); return; }
+    playList(list, list[0].id);
   };
+
+  const playPlaylistSong = (trackId: string) => playList(getPlaylistTracks(), trackId);
 
   const removeSong = (trackId: string) => {
     if (!selectedPlaylist) return;
@@ -69,7 +74,7 @@ export default function PlaylistsScreen() {
         {notice && <Pressable onPress={() => setNotice("")} style={styles.toast}><MaterialIcons name="check-circle" size={17} color={lime} /><Text style={styles.toastText}>{notice}</Text><MaterialIcons name="close" size={15} color="#93a578" /></Pressable>}
       </ScrollView>
 
-      <Modal visible={!!selectedPlaylist} transparent animationType="slide" onRequestClose={() => setSelectedPlaylist(null)}><View style={styles.modalBackdrop}><View style={styles.detailSheet}><View style={styles.sheetHandle} /><View style={styles.detailHeader}><View style={[styles.detailArtwork, { backgroundColor: selectedPlaylist?.tone ?? "#35432c" }]}><MaterialIcons name={selectedPlaylist?.id === "liked" ? "favorite" : "music-note"} size={25} color={selectedPlaylist?.id === "liked" ? "#ff887d" : lime} /></View><View style={{ flex: 1 }}><Text style={styles.sheetKicker}>PLAYLIST</Text><Text numberOfLines={1} style={styles.sheetTitle}>{selectedPlaylist?.title}</Text><Text style={styles.sheetArtist}>{selectedPlaylist?.count} · Local playlist</Text></View><Pressable onPress={() => setSelectedPlaylist(null)} style={styles.close}><MaterialIcons name="close" size={20} color="#f4f5f0" /></Pressable></View><Text style={styles.locationHint}>Songs saved here stay in this playlist.</Text><View style={styles.detailActions}><Pressable onPress={playPlaylist} style={styles.primaryAction}><MaterialIcons name="play-arrow" size={18} color="#0a0b0d" /><Text style={styles.primaryActionText}>Play playlist</Text></Pressable><Pressable onPress={() => { setRenameName(selectedPlaylist?.title ?? ""); setShowRename(true); }} style={styles.secondaryAction}><MaterialIcons name="edit" size={17} color="#e9eee5" /><Text style={styles.secondaryActionText}>Rename</Text></Pressable><Pressable disabled={selectedPlaylist?.id === "liked"} onPress={() => setShowDelete(true)} style={[styles.secondaryAction, selectedPlaylist?.id === "liked" && styles.disabledAction]}><MaterialIcons name="delete-outline" size={18} color={selectedPlaylist?.id === "liked" ? "#626a72" : "#ff9188"} /></Pressable></View><Text style={styles.songsHeading}>Songs</Text>{selectedPlaylist?.trackIds.length ? selectedPlaylist.trackIds.map((id) => { const track = queue.find((item) => item.id === id); return track ? <View key={id} style={styles.songRow}><Pressable onPress={() => playTrack(track)} style={styles.songMain}><View style={[styles.songArt, { backgroundColor: track.tone }]}><Text style={styles.songInitials}>{track.initials}</Text></View><View style={{ flex: 1 }}><Text style={styles.songTitle}>{track.title}</Text><Text style={styles.songArtist}>{track.artist}</Text></View><MaterialIcons name="play-arrow" size={19} color={lime} /></Pressable><Pressable onPress={() => removeSong(id)} hitSlop={10} style={styles.removeSong}><MaterialIcons name="remove-circle-outline" size={19} color="#ff9188" /></Pressable></View> : null; }) : <View style={styles.emptySongs}><MaterialIcons name="music-note" size={24} color={lime} /><Text style={styles.emptySongsText}>No songs yet. Use a song menu in Library to save one to this playlist.</Text></View>}</View></View></Modal>
+      <Modal visible={!!selectedPlaylist} transparent animationType="slide" onRequestClose={() => setSelectedPlaylist(null)}><View style={styles.modalBackdrop}><View style={styles.detailSheet}><View style={styles.sheetHandle} /><View style={styles.detailHeader}><View style={[styles.detailArtwork, { backgroundColor: selectedPlaylist?.tone ?? "#35432c" }]}><MaterialIcons name={selectedPlaylist?.id === "liked" ? "favorite" : "music-note"} size={25} color={selectedPlaylist?.id === "liked" ? "#ff887d" : lime} /></View><View style={{ flex: 1 }}><Text style={styles.sheetKicker}>PLAYLIST</Text><Text numberOfLines={1} style={styles.sheetTitle}>{selectedPlaylist?.title}</Text><Text style={styles.sheetArtist}>{selectedPlaylist?.count} · Local playlist</Text></View><Pressable onPress={() => setSelectedPlaylist(null)} style={styles.close}><MaterialIcons name="close" size={20} color="#f4f5f0" /></Pressable></View><Text style={styles.locationHint}>Songs saved here stay in this playlist.</Text><View style={styles.detailActions}><Pressable onPress={playPlaylist} style={styles.primaryAction}><MaterialIcons name="play-arrow" size={18} color="#0a0b0d" /><Text style={styles.primaryActionText}>Play playlist</Text></Pressable><Pressable onPress={() => { setRenameName(selectedPlaylist?.title ?? ""); setShowRename(true); }} style={styles.secondaryAction}><MaterialIcons name="edit" size={17} color="#e9eee5" /><Text style={styles.secondaryActionText}>Rename</Text></Pressable><Pressable disabled={selectedPlaylist?.id === "liked"} onPress={() => setShowDelete(true)} style={[styles.secondaryAction, selectedPlaylist?.id === "liked" && styles.disabledAction]}><MaterialIcons name="delete-outline" size={18} color={selectedPlaylist?.id === "liked" ? "#626a72" : "#ff9188"} /></Pressable></View><Text style={styles.songsHeading}>Songs</Text>{selectedPlaylist?.trackIds.length ? selectedPlaylist.trackIds.map((id) => { const track = queue.find((item) => item.id === id); return track ? <View key={id} style={styles.songRow}><Pressable onPress={() => playPlaylistSong(track.id)} style={styles.songMain}><View style={[styles.songArt, { backgroundColor: track.tone }]}><Text style={styles.songInitials}>{track.initials}</Text></View><View style={{ flex: 1 }}><Text style={styles.songTitle}>{track.title}</Text><Text style={styles.songArtist}>{track.artist}</Text></View><MaterialIcons name="play-arrow" size={19} color={lime} /></Pressable><Pressable onPress={() => removeSong(id)} hitSlop={10} style={styles.removeSong}><MaterialIcons name="remove-circle-outline" size={19} color="#ff9188" /></Pressable></View> : null; }) : <View style={styles.emptySongs}><MaterialIcons name="music-note" size={24} color={lime} /><Text style={styles.emptySongsText}>No songs yet. Use a song menu in Library to save one to this playlist.</Text></View>}</View></View></Modal>
 
       <Modal visible={showCreate} transparent animationType="fade" onRequestClose={() => setShowCreate(false)}><View style={styles.modalBackdrop}><View style={styles.createCard}><Text style={styles.modalKicker}>NEW MOOD</Text><Text style={styles.modalTitle}>Create a playlist</Text><Text style={styles.modalCopy}>Choose a name, then save songs into it from the Library menu.</Text><TextInput autoFocus value={newName} onChangeText={setNewName} placeholder="e.g. Slow mornings" placeholderTextColor="#747d86" style={styles.input} returnKeyType="done" onSubmitEditing={createPlaylist} /><View style={styles.modalActions}><Pressable onPress={() => { setNewName(""); setShowCreate(false); }} style={styles.cancelButton}><Text style={styles.cancelText}>Cancel</Text></Pressable><Pressable onPress={createPlaylist} style={styles.createButton}><Text style={styles.createText}>Create</Text></Pressable></View></View></View></Modal>
 
@@ -84,7 +89,7 @@ const styles = StyleSheet.create({
   content: { paddingTop: 10, paddingBottom: 26 },
   header: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end" },
   eyebrow: { color: "#7d858f", fontSize: 10, fontWeight: "800", letterSpacing: 1.6 },
-  title: { color: "#f2f4ef", fontSize: 31, fontWeight: "800", letterSpacing: -1.2, marginTop: 6 },
+  title: { color: "#f2f4ef", fontSize: 27, fontWeight: "800", letterSpacing: -1.2, marginTop: 6 },
   intro: { color: muted, fontSize: 13, lineHeight: 19, marginTop: 7, marginBottom: 29 },
   sectionHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 13 },
   sectionTitle: { color: "#eef0eb", fontSize: 17, fontWeight: "800" },

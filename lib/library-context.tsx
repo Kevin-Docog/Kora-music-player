@@ -61,13 +61,17 @@ const ARTWORK_DIR = FileSystem.documentDirectory ? `${FileSystem.documentDirecto
 let artworkDirReady: Promise<unknown> | null = null;
 
 function hashArtwork(base64: string) {
-  let hash = 2166136261;
-  const step = Math.max(1, Math.floor(base64.length / 1024));
-  for (let i = 0; i < base64.length; i += step) {
-    hash ^= base64.charCodeAt(i);
-    hash = Math.imul(hash, 16777619) >>> 0;
+  // Hash every character (two independent 32-bit hashes) so different covers of the same
+  // size can't collide and end up sharing one file.
+  let h1 = 2166136261;
+  let h2 = 5381;
+  for (let i = 0; i < base64.length; i += 1) {
+    const code = base64.charCodeAt(i);
+    h1 ^= code;
+    h1 = Math.imul(h1, 16777619) >>> 0;
+    h2 = (Math.imul(h2, 33) ^ code) >>> 0;
   }
-  return `${hash.toString(36)}${base64.length.toString(36)}`;
+  return `${h1.toString(36)}${h2.toString(36)}${base64.length.toString(36)}`;
 }
 
 async function saveArtworkFile(trackId: string, art: EmbeddedArtwork) {
@@ -204,7 +208,7 @@ function applySavedOverride(track: LibraryTrack, patch?: MetadataPatch) {
   return patch ? applyMetadataPatch(track, patch) : track;
 }
 
-function queueTrackFromLibrary(track: LibraryTrack): QueueTrack {
+export function queueTrackFromLibrary(track: LibraryTrack): QueueTrack {
   return {
     id: track.id,
     title: track.title,
@@ -252,7 +256,7 @@ export function LibraryProvider({ children }: PropsWithChildren) {
   const pauseRequestedRef = useRef(false);
   const scanProgressRef = useRef({ processed: 0, total: 0 });
   const checkpointRef = useRef<(() => void) | null>(null);
-  const { replaceQueue, updateQueueTrack } = useAudioPlayerController();
+  const { replaceQueue, mergeIntoQueue, updateQueueTrack } = useAudioPlayerController();
 
   useEffect(() => {
     overridesRef.current = overrides;
@@ -451,6 +455,8 @@ export function LibraryProvider({ children }: PropsWithChildren) {
         const batch = pending.splice(0, pending.length);
         lastFlush = Date.now();
         setTracks((current) => mergeScannedTracks(current, batch));
+        // Songs are playable (and queueable) as soon as they are scanned, not only when the scan ends.
+        mergeIntoQueue(batch.map(queueTrackFromLibrary));
       };
       let processedNew = 0;
       for (let start = 0; start < newAssets.length; start += CONCURRENCY) {
@@ -498,7 +504,7 @@ export function LibraryProvider({ children }: PropsWithChildren) {
       pauseRequestedRef.current = false;
       checkpointRef.current = null;
     }
-  }, [replaceQueue, updateScan]);
+  }, [mergeIntoQueue, replaceQueue, updateScan]);
 
   const pauseScan = useCallback(() => {
     if (!scanningRef.current || pauseRequestedRef.current) return;

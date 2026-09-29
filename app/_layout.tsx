@@ -7,6 +7,8 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import "react-native-reanimated";
 import { Platform } from "react-native";
 import "@/lib/_core/nativewind-pressable";
+// Must be imported at startup so the background task is defined even when the OS wakes the app headlessly.
+import { syncBackgroundLibraryScanWithSavedSettingAsync } from "@/lib/background-library-task";
 import { ThemeProvider } from "@/lib/theme-provider";
 import {
   SafeAreaFrameContext,
@@ -39,6 +41,11 @@ export default function RootLayout() {
   // Initialize Manus runtime for cookie injection from parent container
   useEffect(() => {
     initManusRuntime();
+  }, []);
+
+  // Restore the saved background-scan preference on every launch.
+  useEffect(() => {
+    void syncBackgroundLibraryScanWithSavedSettingAsync().catch(() => undefined);
   }, []);
 
   const handleSafeAreaUpdate = useCallback((metrics: Metrics) => {

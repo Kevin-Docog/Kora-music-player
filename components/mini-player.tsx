@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAudioPlayerController, useAudioProgress, type QueueTrack } from "@/lib/audio-player-context";
 import { useLibraryController } from "@/lib/library-context";
 import { getActiveLyricIndex } from "@/lib/lyrics-utils";
+import { SongOptions } from "@/components/song-options";
 
 type MiniPlayerProps = { bottom: number };
 const lime = "#c8f34a";
@@ -86,6 +87,7 @@ export function MiniPlayer({ bottom }: MiniPlayerProps) {
   const [showNowPlaying, setShowNowPlaying] = useState(false);
   const [viewMode, setViewMode] = useState<"cover" | "lyric">("cover");
   const [favorite, setFavorite] = useState(false);
+  const [showOptions, setShowOptions] = useState(false);
   const repeatIcon = repeatMode === "shuffle" ? "shuffle" : repeatMode === "all" ? "repeat" : "repeat-one";
   const currentId = currentTrack?.id;
   const currentTitle = currentTrack?.title;
@@ -120,7 +122,7 @@ export function MiniPlayer({ bottom }: MiniPlayerProps) {
       <Modal visible={showNowPlaying} animationType="slide" onRequestClose={() => setShowNowPlaying(false)}>
         <View style={[styles.nowPlaying, { backgroundColor: currentTrack.tone }]}>
           <View style={[styles.nowPlayingOverlay, { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 12 }]}>
-            <View style={styles.topControls}><Pressable onPress={() => setShowNowPlaying(false)} hitSlop={10}><MaterialIcons name="keyboard-arrow-down" size={34} color="#f9f6f3" /></Pressable><View style={styles.moreButton}><MaterialIcons name="more-vert" size={24} color="#f9f6f3" /></View></View>
+            <View style={styles.topControls}><Pressable onPress={() => setShowNowPlaying(false)} hitSlop={10}><MaterialIcons name="keyboard-arrow-down" size={34} color="#f9f6f3" /></Pressable><Pressable onPress={() => setShowOptions(true)} hitSlop={10} style={styles.moreButton}><MaterialIcons name="more-vert" size={24} color="#f9f6f3" /></Pressable></View>
             <View style={styles.segmented}><Pressable onPress={() => setViewMode("cover")} style={[styles.segment, viewMode === "cover" && styles.segmentActive]}><Text style={[styles.segmentText, viewMode === "cover" && styles.segmentTextActive]}>COVER</Text></Pressable><Pressable onPress={() => setViewMode("lyric")} style={[styles.segment, viewMode === "lyric" && styles.segmentActive]}><Text style={[styles.segmentText, viewMode === "lyric" && styles.segmentTextActive]}>LYRIC</Text></Pressable></View>
 
             {viewMode === "cover" ? <View style={styles.coverContent}><View style={styles.largeCover}>{currentTrack.artworkUri ? <Image source={{ uri: currentTrack.artworkUri }} style={styles.coverImage} contentFit="cover" /> : <><View style={styles.coverGlow} /><View style={styles.coverCore}><MaterialIcons name="graphic-eq" size={58} color={lime} /></View><Text style={styles.coverInitials}>{currentTrack.initials}</Text><Text style={styles.coverBrand}>KORA LOCAL PLAY</Text></>}</View><View style={styles.trackHeading}><View style={{ flex: 1 }}><Text numberOfLines={1} style={styles.nowTitle}>{currentTrack.title}</Text><Text numberOfLines={1} style={styles.nowArtist}>{currentTrack.artist}</Text></View><Pressable onPress={() => setFavorite((value) => !value)} hitSlop={10}><MaterialIcons name={favorite ? "favorite" : "favorite-border"} size={33} color={favorite ? lime : "#f9f6f3"} /></Pressable></View></View> : <LyricsView lines={lyricLines} fallbackText={libraryTrack?.lyricsText} />}
@@ -128,6 +130,7 @@ export function MiniPlayer({ bottom }: MiniPlayerProps) {
             <SeekBar seekTo={seekTo} />
             <View style={styles.transport}><Pressable onPress={toggleRepeatMode} hitSlop={12}><MaterialIcons name={repeatIcon} size={29} color="#f9f6f3" /></Pressable><Pressable onPress={previous} hitSlop={12}><MaterialIcons name="skip-previous" size={39} color="#f9f6f3" /></Pressable><Pressable onPress={togglePlay} style={styles.bigPlay}><MaterialIcons name={isPlaying ? "pause" : "play-arrow"} size={39} color={currentTrack.tone} /></Pressable><Pressable onPress={next} hitSlop={12}><MaterialIcons name="skip-next" size={39} color="#f9f6f3" /></Pressable><Pressable onPress={() => setShowQueue(true)} hitSlop={12}><MaterialIcons name="queue-music" size={30} color="#f9f6f3" /></Pressable></View>
           </View>
+          <SongOptions open={showOptions} onClose={() => setShowOptions(false)} track={currentTrack} libraryTrack={libraryTrack} />
         </View>
       </Modal>
 
