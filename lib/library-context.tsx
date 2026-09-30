@@ -409,7 +409,7 @@ export function LibraryProvider({ children }: PropsWithChildren) {
         assets.push(...page.assets);
         // Songs already saved from an earlier scan count as done, so progress doesn't restart from 0.
         page.assets.forEach((pageAsset) => {
-          const saved = cachedTracksById.get(pageAsset.id);
+          const saved = cachedTracksById.get(`asset-${pageAsset.id}`);
           if (saved && (saved.artChecked || !artworkEnabledRef.current)) countedCached += 1;
         });
         cursor = page.endCursor;
@@ -422,7 +422,7 @@ export function LibraryProvider({ children }: PropsWithChildren) {
       const newAssets: Array<{ asset: AssetWithMetadata; index: number }> = [];
       assets.forEach((rawAsset, index) => {
         const asset = rawAsset as AssetWithMetadata;
-        const cachedTrack = cachedTracksById.get(asset.id);
+        const cachedTrack = cachedTracksById.get(`asset-${asset.id}`);
         if (cachedTrack && (cachedTrack.artChecked || !artworkEnabledRef.current)) {
           scanned.push(cachedTrack);
           cachedCount += 1;
@@ -461,7 +461,7 @@ export function LibraryProvider({ children }: PropsWithChildren) {
           artworkUri,
         };
         const baseTrack = mapNativeAudioAsset(enrichedAsset, index);
-        const previous = cachedTracksById.get(asset.id);
+        const previous = cachedTracksById.get(`asset-${asset.id}`);
         return applySavedOverride(enrichLyrics({ ...baseTrack, addedAt: previous?.addedAt ?? Date.now() - index, artChecked: true }, lrcText), overridesRef.current[baseTrack.id]);
       };
 
@@ -515,7 +515,8 @@ export function LibraryProvider({ children }: PropsWithChildren) {
       // Drop songs that were deleted from the device. Skipped if the device reported no music at all
       // (e.g. permission problems) so a bad read can never wipe the whole library.
       if (assets.length > 0) {
-        const deviceIds = new Set(assets.map((asset) => asset.id));
+        // Track ids are stored as "asset-<device id>", so compare using the same format.
+        const deviceIds = new Set(assets.map((asset) => `asset-${asset.id}`));
         merged = merged.filter((track) => deviceIds.has(track.id));
       }
       setTracks(merged);
