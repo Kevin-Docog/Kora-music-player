@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Modal, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import type { QueueTrack } from "@/lib/audio-player-context";
 import { useLibraryController, type LibraryTrack } from "@/lib/library-context";
@@ -56,7 +56,7 @@ export function SongOptions({ open, onClose, track, libraryTrack }: Props) {
   return (
     <>
       <Modal visible={open} transparent animationType={mode === "menu" ? "fade" : "slide"} onRequestClose={onClose}>
-        <View style={styles.backdrop}>
+        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.backdrop}>
           <View style={styles.sheet}>
             {mode === "menu" ? (
               <>
@@ -98,15 +98,17 @@ export function SongOptions({ open, onClose, track, libraryTrack }: Props) {
                   <View style={{ flex: 1 }}><Text style={styles.kicker}>LOCAL EDIT</Text><Text style={styles.title}>Edit metadata</Text><Text style={styles.subtitle}>Saved in Kora without changing the source file.</Text></View>
                   <Pressable onPress={onClose} style={styles.close}><MaterialIcons name="close" size={21} color="#f4f5f0" /></Pressable>
                 </View>
+                <ScrollView style={styles.editScroll} contentContainerStyle={styles.editScrollContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
                 <TextInput value={draft.title} onChangeText={(value) => setDraft((current) => ({ ...current, title: value }))} placeholder="Title" placeholderTextColor="#747d86" style={styles.input} />
                 <TextInput value={draft.artist} onChangeText={(value) => setDraft((current) => ({ ...current, artist: value }))} placeholder="Artist" placeholderTextColor="#747d86" style={styles.input} />
                 <TextInput value={draft.album} onChangeText={(value) => setDraft((current) => ({ ...current, album: value }))} placeholder="Album" placeholderTextColor="#747d86" style={styles.input} />
-                <TextInput value={draft.lyricsText} onChangeText={(value) => setDraft((current) => ({ ...current, lyricsText: value }))} placeholder="Lyrics or LRC timestamps (optional)" placeholderTextColor="#747d86" style={[styles.input, styles.lyricsInput]} multiline textAlignVertical="top" />
+                <TextInput value={draft.lyricsText} onChangeText={(value) => setDraft((current) => ({ ...current, lyricsText: value }))} placeholder="Lyrics or LRC timestamps (optional)" placeholderTextColor="#747d86" style={[styles.input, styles.lyricsInput]} multiline scrollEnabled nestedScrollEnabled textAlignVertical="top" />
+                </ScrollView>
                 <Pressable onPress={saveEdit} style={styles.button}><MaterialIcons name="save" size={18} color="#0a0b0d" /><Text style={styles.buttonText}>Save changes</Text></Pressable>
               </>
             )}
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
       {toast ? <View pointerEvents="none" style={styles.toast}><Text style={styles.toastText}>{toast}</Text></View> : null}
     </>
@@ -115,7 +117,7 @@ export function SongOptions({ open, onClose, track, libraryTrack }: Props) {
 
 const styles = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.7)", justifyContent: "flex-end" },
-  sheet: { backgroundColor: "#15181c", borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 22, paddingBottom: 33, borderWidth: 1, borderColor: "#31363e" },
+  sheet: { maxHeight: "92%", backgroundColor: "#15181c", borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 22, paddingBottom: 33, borderWidth: 1, borderColor: "#31363e" },
   header: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
   kicker: { color: lime, fontSize: 9, fontWeight: "900", letterSpacing: 1.5 },
   title: { color: "#f1f3ee", fontSize: 21, fontWeight: "800", marginTop: 7 },
@@ -131,7 +133,9 @@ const styles = StyleSheet.create({
   newMood: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, borderWidth: 1, borderColor: "#39422f", borderRadius: 11, paddingVertical: 11, marginTop: 12 },
   newMoodText: { color: lime, fontSize: 11, fontWeight: "800" },
   input: { color: "#eef0eb", backgroundColor: "#20252b", borderRadius: 11, paddingHorizontal: 13, paddingVertical: 12, marginTop: 12, fontSize: 13 },
-  lyricsInput: { minHeight: 110 },
+  lyricsInput: { height: 130, maxHeight: 130 },
+  editScroll: { flexGrow: 0, flexShrink: 1 },
+  editScrollContent: { paddingBottom: 4 },
   button: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, backgroundColor: lime, borderRadius: 11, paddingVertical: 13, marginTop: 16 },
   buttonText: { color: "#0a0b0d", fontSize: 12, fontWeight: "900" },
   toast: { position: "absolute", left: 24, right: 24, bottom: 40, alignItems: "center" },

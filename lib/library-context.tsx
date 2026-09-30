@@ -368,6 +368,7 @@ export function LibraryProvider({ children }: PropsWithChildren) {
       let cursor: string | undefined;
       let hasNextPage = true;
       let lastUiUpdate = 0;
+      let countedCached = 0;
       const reportProgress = (processed: number, total: number, message: string, force = false) => {
         scanProgressRef.current = { processed, total };
         const now = Date.now();
@@ -406,9 +407,14 @@ export function LibraryProvider({ children }: PropsWithChildren) {
           sortBy: "default",
         });
         assets.push(...page.assets);
+        // Songs already saved from an earlier scan count as done, so progress doesn't restart from 0.
+        page.assets.forEach((pageAsset) => {
+          const saved = cachedTracksById.get(pageAsset.id);
+          if (saved && (saved.artChecked || !artworkEnabledRef.current)) countedCached += 1;
+        });
         cursor = page.endCursor;
         hasNextPage = page.hasNextPage && Boolean(cursor);
-        reportProgress(0, assets.length, `Found ${assets.length} music file${assets.length === 1 ? "" : "s"}`);
+        reportProgress(countedCached, assets.length, `Found ${assets.length} music file${assets.length === 1 ? "" : "s"}`);
       }
 
       // Cached tracks are reused instantly. A cached track is only re-read if artwork was never checked
@@ -424,6 +430,9 @@ export function LibraryProvider({ children }: PropsWithChildren) {
           newAssets.push({ asset, index });
         }
       });
+
+      // Show the already-saved songs as done right away instead of waiting for the first new batch.
+      reportProgress(cachedCount, assets.length, newAssets.length ? `Scanning new music 0 of ${newAssets.length}` : "Finishing up", true);
 
       const buildTrack = async (asset: AssetWithMetadata, index: number) => {
         // On Android asset.uri is already a readable file:// path, so skip the slow per-song info lookup.
