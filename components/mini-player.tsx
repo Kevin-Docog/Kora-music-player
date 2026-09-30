@@ -1,4 +1,4 @@
-import { FlatList, Modal, PanResponder, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Animated, FlatList, Modal, PanResponder, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { Image } from "expo-image";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -101,6 +101,38 @@ export function MiniPlayer({ bottom }: MiniPlayerProps) {
   const queueKey = useCallback((item: QueueTrack, index: number) => `${item.id}-${index}`, []);
   const queueLayout = useCallback((_: ArrayLike<QueueTrack> | null | undefined, index: number) => ({ length: QUEUE_ROW_HEIGHT, offset: QUEUE_ROW_HEIGHT * index, index }), []);
 
+  // Swipe gestures for the expanded player. Kept in a ref so the responders always call the latest handlers.
+  const swipeActions = useRef({ next, previous, close: () => setShowNowPlaying(false) });
+  swipeActions.current = { next, previous, close: () => setShowNowPlaying(false) };
+  const coverShift = useRef(new Animated.Value(0)).current;
+  const coverPan = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 10 || g.dy > 10,
+      onPanResponderMove: (_, g) => {
+        if (Math.abs(g.dx) > Math.abs(g.dy)) coverShift.setValue(g.dx * 0.5);
+      },
+      onPanResponderRelease: (_, g) => {
+        Animated.spring(coverShift, { toValue: 0, useNativeDriver: true, bounciness: 6 }).start();
+        if (Math.abs(g.dx) > Math.abs(g.dy)) {
+          if (g.dx < -60) swipeActions.current.next();
+          else if (g.dx > 60) swipeActions.current.previous();
+        } else if (g.dy > 90) {
+          swipeActions.current.close();
+        }
+      },
+      onPanResponderTerminate: () => Animated.spring(coverShift, { toValue: 0, useNativeDriver: true }).start(),
+    }),
+  ).current;
+  // Header area (and lyrics mode): swipe down only, so scrolling lyrics is never blocked.
+  const closePan = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, g) => g.dy > 12 && g.dy > Math.abs(g.dx),
+      onPanResponderRelease: (_, g) => {
+        if (g.dy > 90) swipeActions.current.close();
+      },
+    }),
+  ).current;
+
   if (!currentTrack || queue.length === 0) return null;
 
   return (
@@ -123,10 +155,10 @@ export function MiniPlayer({ bottom }: MiniPlayerProps) {
         <View style={[styles.nowPlaying, { backgroundColor: currentTrack.tone }]}>
           {currentTrack.artworkUri ? <Image source={{ uri: currentTrack.artworkUri }} style={StyleSheet.absoluteFill} contentFit="cover" blurRadius={70} /> : null}
           <View style={[styles.nowPlayingOverlay, { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 12 }]}>
-            <View style={styles.topControls}><Pressable onPress={() => setShowNowPlaying(false)} hitSlop={10}><MaterialIcons name="keyboard-arrow-down" size={34} color="#f9f6f3" /></Pressable><Pressable onPress={() => setShowOptions(true)} hitSlop={10} style={styles.moreButton}><MaterialIcons name="more-vert" size={24} color="#f9f6f3" /></Pressable></View>
-            <View style={styles.segmented}><Pressable onPress={() => setViewMode("cover")} style={[styles.segment, viewMode === "cover" && styles.segmentActive]}><Text style={[styles.segmentText, viewMode === "cover" && styles.segmentTextActive]}>COVER</Text></Pressable><Pressable onPress={() => setViewMode("lyric")} style={[styles.segment, viewMode === "lyric" && styles.segmentActive]}><Text style={[styles.segmentText, viewMode === "lyric" && styles.segmentTextActive]}>LYRIC</Text></Pressable></View>
+            <View {...closePan.panHandlers}><View style={styles.topControls}><Pressable onPress={() => setShowNowPlaying(false)} hitSlop={10}><MaterialIcons name="keyboard-arrow-down" size={34} color="#f9f6f3" /></Pressable><Pressable onPress={() => setShowOptions(true)} hitSlop={10} style={styles.moreButton}><MaterialIcons name="more-vert" size={24} color="#f9f6f3" /></Pressable></View>
+            <View style={styles.segmented}><Pressable onPress={() => setViewMode("cover")} style={[styles.segment, viewMode === "cover" && styles.segmentActive]}><Text style={[styles.segmentText, viewMode === "cover" && styles.segmentTextActive]}>COVER</Text></Pressable><Pressable onPress={() => setViewMode("lyric")} style={[styles.segment, viewMode === "lyric" && styles.segmentActive]}><Text style={[styles.segmentText, viewMode === "lyric" && styles.segmentTextActive]}>LYRIC</Text></Pressable></View></View>
 
-            {viewMode === "cover" ? <View style={styles.coverContent}><View style={styles.largeCover}>{currentTrack.artworkUri ? <Image source={{ uri: currentTrack.artworkUri }} style={styles.coverImage} contentFit="cover" /> : <><View style={styles.coverGlow} /><View style={styles.coverCore}><MaterialIcons name="music-note" size={70} color={lime} /></View><Text style={styles.coverBrand}>KORA LOCAL PLAY</Text></>}</View><View style={styles.trackHeading}><View style={{ flex: 1 }}><Text numberOfLines={1} style={styles.nowTitle}>{currentTrack.title}</Text><Text numberOfLines={1} style={styles.nowArtist}>{currentTrack.artist}</Text></View><Pressable onPress={() => setFavorite((value) => !value)} hitSlop={10}><MaterialIcons name={favorite ? "favorite" : "favorite-border"} size={33} color={favorite ? lime : "#f9f6f3"} /></Pressable></View></View> : <LyricsView lines={lyricLines} fallbackText={libraryTrack?.lyricsText} />}
+            {viewMode === "cover" ? <View style={styles.coverContent} {...coverPan.panHandlers}><Animated.View style={[styles.largeCover, { transform: [{ translateX: coverShift }] }]}>{currentTrack.artworkUri ? <Image source={{ uri: currentTrack.artworkUri }} style={styles.coverImage} contentFit="cover" /> : <><View style={styles.coverGlow} /><View style={styles.coverCore}><MaterialIcons name="music-note" size={70} color={lime} /></View><Text style={styles.coverBrand}>KORA LOCAL PLAY</Text></>}</Animated.View><View style={styles.trackHeading}><View style={{ flex: 1 }}><Text numberOfLines={1} style={styles.nowTitle}>{currentTrack.title}</Text><Text numberOfLines={1} style={styles.nowArtist}>{currentTrack.artist}</Text></View><Pressable onPress={() => setFavorite((value) => !value)} hitSlop={10}><MaterialIcons name={favorite ? "favorite" : "favorite-border"} size={33} color={favorite ? lime : "#f9f6f3"} /></Pressable></View></View> : <LyricsView lines={lyricLines} fallbackText={libraryTrack?.lyricsText} />}
 
             <SeekBar seekTo={seekTo} />
             <View style={styles.transport}><Pressable onPress={toggleRepeatMode} hitSlop={12}><MaterialIcons name={repeatIcon} size={29} color="#f9f6f3" /></Pressable><Pressable onPress={previous} hitSlop={12}><MaterialIcons name="skip-previous" size={39} color="#f9f6f3" /></Pressable><Pressable onPress={togglePlay} style={styles.bigPlay}><MaterialIcons name={isPlaying ? "pause" : "play-arrow"} size={39} color={currentTrack.tone} /></Pressable><Pressable onPress={next} hitSlop={12}><MaterialIcons name="skip-next" size={39} color="#f9f6f3" /></Pressable><Pressable onPress={() => setShowQueue(true)} hitSlop={12}><MaterialIcons name="queue-music" size={30} color="#f9f6f3" /></Pressable></View>
