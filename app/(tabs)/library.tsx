@@ -1041,9 +1041,7 @@ const TrackRow = memo(function TrackRow({
             transition={0}
           />
         ) : (
-          <Text style={styles.initials}>
-            {track.initials}
-          </Text>
+          <MaterialIcons name="music-note" size={22} color="#f3f5ef" style={{ opacity: 0.8 }} />
         )}
       </View>
 

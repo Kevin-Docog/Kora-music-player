@@ -71,7 +71,7 @@ const LyricsView = memo(function LyricsView({ lines, fallbackText }: { lines: Ar
 const QueueRow = memo(function QueueRow({ track, active, onRemove }: { track: QueueTrack; active: boolean; onRemove: (id: string) => void }) {
   return (
     <View style={[styles.queueRow, active && styles.activeRow]}>
-      <View style={[styles.queueArt, { backgroundColor: track.tone }]}>{track.artworkUri ? <Image source={{ uri: track.artworkUri }} style={styles.queueImage} /> : <Text style={styles.queueInitials}>{track.initials}</Text>}</View>
+      <View style={[styles.queueArt, { backgroundColor: track.tone }]}>{track.artworkUri ? <Image source={{ uri: track.artworkUri }} style={styles.queueImage} /> : <MaterialIcons name="music-note" size={18} color="#f3f5ef" style={{ opacity: 0.8 }} />}</View>
       <View style={{ flex: 1 }}><Text numberOfLines={1} style={styles.queueTitle}>{track.title}</Text><Text numberOfLines={1} style={styles.queueArtist}>{track.artist}</Text></View>
       {active && <MaterialIcons name="volume-up" size={16} color={lime} />}
       <Pressable onPress={() => onRemove(track.id)} hitSlop={10}><MaterialIcons name="close" size={17} color="#747d86" /></Pressable>
@@ -108,7 +108,7 @@ export function MiniPlayer({ bottom }: MiniPlayerProps) {
       <View pointerEvents="box-none" style={[styles.floatingWrap, { bottom }]}>
         <View style={styles.playerBar}>
           <Pressable onPress={() => setShowNowPlaying(true)} style={({ pressed }) => [styles.mainHitArea, pressed && styles.pressed]}>
-            <View style={[styles.art, { backgroundColor: currentTrack.tone }]}>{currentTrack.artworkUri ? <Image source={{ uri: currentTrack.artworkUri }} style={styles.artImage} /> : <Text style={styles.artText}>{currentTrack.initials}</Text>}</View>
+            <View style={[styles.art, { backgroundColor: currentTrack.tone }]}>{currentTrack.artworkUri ? <Image source={{ uri: currentTrack.artworkUri }} style={styles.artImage} /> : <MaterialIcons name="music-note" size={24} color="#f3f5ef" style={{ opacity: 0.8 }} />}</View>
             <View style={styles.copy}>
               <Text numberOfLines={1} style={styles.title}>{currentTrack.title}</Text>
               <Text numberOfLines={1} style={styles.artist}>{currentTrack.artist} · {currentTrack.album}</Text>
@@ -121,11 +121,12 @@ export function MiniPlayer({ bottom }: MiniPlayerProps) {
 
       <Modal visible={showNowPlaying} animationType="slide" onRequestClose={() => setShowNowPlaying(false)}>
         <View style={[styles.nowPlaying, { backgroundColor: currentTrack.tone }]}>
+          {currentTrack.artworkUri ? <Image source={{ uri: currentTrack.artworkUri }} style={StyleSheet.absoluteFill} contentFit="cover" blurRadius={70} /> : null}
           <View style={[styles.nowPlayingOverlay, { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 12 }]}>
             <View style={styles.topControls}><Pressable onPress={() => setShowNowPlaying(false)} hitSlop={10}><MaterialIcons name="keyboard-arrow-down" size={34} color="#f9f6f3" /></Pressable><Pressable onPress={() => setShowOptions(true)} hitSlop={10} style={styles.moreButton}><MaterialIcons name="more-vert" size={24} color="#f9f6f3" /></Pressable></View>
             <View style={styles.segmented}><Pressable onPress={() => setViewMode("cover")} style={[styles.segment, viewMode === "cover" && styles.segmentActive]}><Text style={[styles.segmentText, viewMode === "cover" && styles.segmentTextActive]}>COVER</Text></Pressable><Pressable onPress={() => setViewMode("lyric")} style={[styles.segment, viewMode === "lyric" && styles.segmentActive]}><Text style={[styles.segmentText, viewMode === "lyric" && styles.segmentTextActive]}>LYRIC</Text></Pressable></View>
 
-            {viewMode === "cover" ? <View style={styles.coverContent}><View style={styles.largeCover}>{currentTrack.artworkUri ? <Image source={{ uri: currentTrack.artworkUri }} style={styles.coverImage} contentFit="cover" /> : <><View style={styles.coverGlow} /><View style={styles.coverCore}><MaterialIcons name="graphic-eq" size={58} color={lime} /></View><Text style={styles.coverInitials}>{currentTrack.initials}</Text><Text style={styles.coverBrand}>KORA LOCAL PLAY</Text></>}</View><View style={styles.trackHeading}><View style={{ flex: 1 }}><Text numberOfLines={1} style={styles.nowTitle}>{currentTrack.title}</Text><Text numberOfLines={1} style={styles.nowArtist}>{currentTrack.artist}</Text></View><Pressable onPress={() => setFavorite((value) => !value)} hitSlop={10}><MaterialIcons name={favorite ? "favorite" : "favorite-border"} size={33} color={favorite ? lime : "#f9f6f3"} /></Pressable></View></View> : <LyricsView lines={lyricLines} fallbackText={libraryTrack?.lyricsText} />}
+            {viewMode === "cover" ? <View style={styles.coverContent}><View style={styles.largeCover}>{currentTrack.artworkUri ? <Image source={{ uri: currentTrack.artworkUri }} style={styles.coverImage} contentFit="cover" /> : <><View style={styles.coverGlow} /><View style={styles.coverCore}><MaterialIcons name="music-note" size={70} color={lime} /></View><Text style={styles.coverBrand}>KORA LOCAL PLAY</Text></>}</View><View style={styles.trackHeading}><View style={{ flex: 1 }}><Text numberOfLines={1} style={styles.nowTitle}>{currentTrack.title}</Text><Text numberOfLines={1} style={styles.nowArtist}>{currentTrack.artist}</Text></View><Pressable onPress={() => setFavorite((value) => !value)} hitSlop={10}><MaterialIcons name={favorite ? "favorite" : "favorite-border"} size={33} color={favorite ? lime : "#f9f6f3"} /></Pressable></View></View> : <LyricsView lines={lyricLines} fallbackText={libraryTrack?.lyricsText} />}
 
             <SeekBar seekTo={seekTo} />
             <View style={styles.transport}><Pressable onPress={toggleRepeatMode} hitSlop={12}><MaterialIcons name={repeatIcon} size={29} color="#f9f6f3" /></Pressable><Pressable onPress={previous} hitSlop={12}><MaterialIcons name="skip-previous" size={39} color="#f9f6f3" /></Pressable><Pressable onPress={togglePlay} style={styles.bigPlay}><MaterialIcons name={isPlaying ? "pause" : "play-arrow"} size={39} color={currentTrack.tone} /></Pressable><Pressable onPress={next} hitSlop={12}><MaterialIcons name="skip-next" size={39} color="#f9f6f3" /></Pressable><Pressable onPress={() => setShowQueue(true)} hitSlop={12}><MaterialIcons name="queue-music" size={30} color="#f9f6f3" /></Pressable></View>
@@ -158,7 +159,7 @@ const styles = StyleSheet.create({
   playButton: { width: 37, height: 37, borderRadius: 19, backgroundColor: lime, alignItems: "center", justifyContent: "center" },
   pressed: { opacity: 0.7, transform: [{ scale: 0.97 }] },
   nowPlaying: { flex: 1 },
-  nowPlayingOverlay: { flex: 1, paddingHorizontal: 26, backgroundColor: "rgba(22, 7, 8, 0.5)" },
+  nowPlayingOverlay: { flex: 1, paddingHorizontal: 26, backgroundColor: "rgba(0, 0, 0, 0.42)" },
   topControls: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   moreButton: { width: 34, height: 40, alignItems: "center", justifyContent: "center" },
   segmented: { flexDirection: "row", alignSelf: "center", backgroundColor: "rgba(255,255,255,0.1)", borderRadius: 24, padding: 3, marginTop: -39, marginBottom: 28 },
@@ -167,9 +168,9 @@ const styles = StyleSheet.create({
   segmentText: { color: "#d9c8c5", fontSize: 12, fontWeight: "800" },
   segmentTextActive: { color: "#ffffff" },
   coverContent: { flex: 1, justifyContent: "center" },
-  largeCover: { aspectRatio: 1, width: "100%", maxWidth: 370, alignSelf: "center", borderRadius: 25, backgroundColor: "#7d1c14", alignItems: "center", justifyContent: "center", overflow: "hidden", borderWidth: 1, borderColor: "rgba(255,255,255,0.15)" },
+  largeCover: { aspectRatio: 1, width: "100%", maxWidth: 370, alignSelf: "center", borderRadius: 25, backgroundColor: "#7d1c14", alignItems: "center", justifyContent: "center", overflow: "hidden" },
   coverImage: { position: "absolute", width: "100%", height: "100%" },
-  coverGlow: { position: "absolute", width: "85%", height: "85%", borderRadius: 180, borderWidth: 1, borderColor: "rgba(255,255,255,0.35)" },
+  coverGlow: { position: "absolute", width: "85%", height: "85%", borderRadius: 180, backgroundColor: "rgba(255,255,255,0.08)" },
   coverCore: { width: 126, height: 126, borderRadius: 63, backgroundColor: "rgba(18, 9, 10, 0.35)", alignItems: "center", justifyContent: "center" },
   coverInitials: { color: "#fff3ed", fontSize: 30, fontWeight: "900", letterSpacing: 2, marginTop: 19 },
   coverBrand: { color: "rgba(255,245,237,0.65)", fontSize: 9, fontWeight: "900", letterSpacing: 3, marginTop: 16 },

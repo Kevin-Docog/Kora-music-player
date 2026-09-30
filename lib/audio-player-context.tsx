@@ -170,10 +170,8 @@ export function AudioPlayerProvider({ children }: PropsWithChildren) {
       if (saved) {
         try {
           const parsed = JSON.parse(saved) as Partial<{ normalizeVolume: boolean; smoothTransitions: boolean; equalizerPreset: string; backgroundAudioEnabled: boolean; repeatMode: RepeatMode }>;
-          if (typeof parsed.normalizeVolume === "boolean") setNormalizeVolumeState(parsed.normalizeVolume);
-          if (typeof parsed.smoothTransitions === "boolean") setSmoothTransitionsState(parsed.smoothTransitions);
-          if (typeof parsed.equalizerPreset === "string") setEqualizerPresetState(parsed.equalizerPreset);
-          if (typeof parsed.backgroundAudioEnabled === "boolean") setBackgroundAudioEnabledState(parsed.backgroundAudioEnabled);
+          // Playback/equalizer settings were removed from the UI, so previously saved values are ignored.
+          // Background audio is always on so music keeps playing when the screen locks.
           if (parsed.repeatMode === "shuffle" || parsed.repeatMode === "all" || parsed.repeatMode === "one") setRepeatMode(parsed.repeatMode);
         } catch { /* use defaults */ }
       }

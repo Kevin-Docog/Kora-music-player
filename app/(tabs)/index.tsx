@@ -126,7 +126,7 @@ export default function HomeScreen() {
           {continueListening.length ? continueListening.map((item) => (
             <Pressable key={item.id} onPress={() => playItem(item)} style={({ pressed }) => [styles.continueCard, pressed && styles.pressed]}>
               <View style={[styles.smallArtwork, { backgroundColor: item.tone }]}>
-                {item.artworkUri ? <Image source={{ uri: item.artworkUri }} style={styles.artworkImage} /> : <Text style={styles.artworkInitials}>{item.initials}</Text>}
+                {item.artworkUri ? <Image source={{ uri: item.artworkUri }} style={styles.artworkImage} /> : <MaterialIcons name="music-note" size={34} color="#f3f4ee" style={{ opacity: 0.8 }} />}
                 <MaterialIcons name="play-circle" size={22} color="#ffffff" style={styles.cardPlay} />
               </View>
               <Text numberOfLines={1} style={styles.cardTitle}>{item.title}</Text>

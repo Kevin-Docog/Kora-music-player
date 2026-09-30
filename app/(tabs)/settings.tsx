@@ -3,7 +3,6 @@ import { useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { ScreenContainer } from "@/components/screen-container";
-import { useAudioPlayerController } from "@/lib/audio-player-context";
 import { useLibraryController } from "@/lib/library-context";
 import { registerBackgroundLibraryScanAsync, unregisterBackgroundLibraryScanAsync } from "@/lib/background-library-task";
 
@@ -18,8 +17,7 @@ export default function SettingsScreen() {
   const [settings, setSettings] = useState<SettingsState>(DEFAULT_SETTINGS);
   const [settingsHydrated, setSettingsHydrated] = useState(false);
   const [toast, setToast] = useState("");
-  const { backgroundAudioEnabled, setBackgroundAudioEnabled, normalizeVolume, smoothTransitions, equalizerPreset, setNormalizeVolume, setSmoothTransitions, setEqualizerPreset } = useAudioPlayerController();
-  const { scanState, refreshLibrary, resumeScan, artworkEnabled, lyricsEnabled, setArtworkEnabled, setLyricsEnabled } = useLibraryController();
+    const { scanState, refreshLibrary, resumeScan, artworkEnabled, lyricsEnabled, setArtworkEnabled, setLyricsEnabled } = useLibraryController();
 
   useEffect(() => { AsyncStorage.getItem(SETTINGS_KEY).then((saved) => { if (saved) { try { setSettings({ ...DEFAULT_SETTINGS, ...(JSON.parse(saved) as Partial<SettingsState>) }); } catch { /* use defaults */ } } setSettingsHydrated(true); }).catch(() => setSettingsHydrated(true)); }, []);
   useEffect(() => { if (settingsHydrated) void AsyncStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); }, [settings, settingsHydrated]);
@@ -43,19 +41,7 @@ export default function SettingsScreen() {
   return (
     <ScreenContainer containerClassName="bg-[#0a0b0d]" className="px-5">
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
-        <View style={styles.header}><View><Text style={styles.eyebrow}>PLAYBACK + PREFERENCES</Text><Text style={styles.title}>Settings</Text></View></View>
-
-        <Text style={styles.groupLabel}>PLAYBACK</Text>
-        <View style={styles.groupCard}>
-          <SettingRow icon="equalizer" title="Normalize volume" subtitle="Keep tracks at a comfortable level" value={normalizeVolume} onPress={() => setNormalizeVolume(!normalizeVolume)} />
-          <View style={styles.divider} />
-          <SettingRow icon="compare-arrows" title="Smooth transitions" subtitle="Fade into the next song without a hard cut" value={smoothTransitions} onPress={() => setSmoothTransitions(!smoothTransitions)} />
-          <View style={styles.divider} />
-          <SettingRow icon="headphones" title="Background audio" subtitle="Keep playback going when the screen locks" value={backgroundAudioEnabled} onPress={() => setBackgroundAudioEnabled(!backgroundAudioEnabled)} />
-        </View>
-
-        <Text style={styles.groupLabel}>SOUND PROFILE</Text>
-        <View style={styles.soundCard}><View style={styles.soundHeader}><View><Text style={styles.rowTitle}>Equalizer preset</Text><Text style={styles.rowSubtitle}>Apply a listening profile to playback</Text></View><Text style={styles.activeValue}>{equalizerPreset}</Text></View><View style={styles.presetRow}>{["Flat", "Warm", "Vocal", "Bass boost"].map((item) => <Pressable key={item} onPress={() => { setEqualizerPreset(item); flash(`${item} preset selected`); }} style={[styles.preset, equalizerPreset === item && styles.presetActive]}><Text style={[styles.presetText, equalizerPreset === item && styles.presetTextActive]}>{item}</Text></Pressable>)}</View></View>
+        <View style={styles.header}><View><Text style={styles.eyebrow}>PREFERENCES</Text><Text style={styles.title}>Settings</Text></View></View>
 
         <Text style={styles.groupLabel}>LIBRARY</Text>
         <View style={styles.groupCard}>
