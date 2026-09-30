@@ -2,7 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 
-import { FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Alert, FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { Image } from "expo-image";
 
@@ -75,6 +75,7 @@ export default function LibraryScreen() {
     cancelScan,
     sortTracks,
     updateTrackMetadata,
+    deleteTrack,
   } = useLibraryController();
 
   const { playlists, addTrackToPlaylist, createPlaylist } = usePlaylistController();
@@ -153,6 +154,13 @@ export default function LibraryScreen() {
   }, [sort, filter, viewPrefsLoaded]);
 
   const [favoritesLoaded, setFavoritesLoaded] = useState(false);
+
+  // Forget favorites whose song was deleted (only once a scan has finished, so a partial library never removes any).
+  useEffect(() => {
+    if (!favoritesLoaded || scanState.status !== "complete" || tracks.length === 0) return;
+    const validIds = new Set(tracks.map((track) => track.id));
+    setFavorites((current) => (current.every((id) => validIds.has(id)) ? current : current.filter((id) => validIds.has(id))));
+  }, [favoritesLoaded, scanState.status, tracks]);
 
   useEffect(() => {
     AsyncStorage.getItem(FAVORITES_KEY)
@@ -583,6 +591,39 @@ export default function LibraryScreen() {
                 name="edit"
                 size={18}
                 color={lime}
+              />
+            </Pressable>
+
+            <Pressable
+              onPress={() => {
+                const track = menuTrack;
+                setMenuTrack(null);
+                if (!track) return;
+                setTimeout(() => {
+                  Alert.alert(
+                    "Delete song?",
+                    `"${track.title}" will be deleted from this device. This can't be undone.`,
+                    [
+                      { text: "Cancel", style: "cancel" },
+                      {
+                        text: "Delete",
+                        style: "destructive",
+                        onPress: () => {
+                          void deleteTrack(track.id).then((deleted) => setToast(deleted ? "Song deleted" : "Couldn't delete this song"));
+                        },
+                      },
+                    ],
+                  );
+                }, 250);
+              }}
+              style={styles.sortChoice}
+            >
+              <Text style={[styles.choiceText, { color: "#ff6b6b" }]}>Delete song</Text>
+
+              <MaterialIcons
+                name="delete-outline"
+                size={20}
+                color="#ff6b6b"
               />
             </Pressable>
 

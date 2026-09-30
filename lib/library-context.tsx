@@ -34,7 +34,7 @@ export type ScanState = {
 const TRACKS_KEY = "kora.library.tracks";
 const SCAN_KEY = "kora.library.scan";
 const OVERRIDES_KEY = "kora.library.metadata-overrides";
-const PAGE_SIZE = 500;
+const PAGE_SIZE = 1000;
 const pausedMessage = (processed: number, total: number) => (total ? `Paused — ${processed} of ${total} tracks done. Tap Resume to continue` : "Scan paused. Tap Resume to continue");
 const LIBRARY_FILE = FileSystem.documentDirectory ? `${FileSystem.documentDirectory}kora-library.json` : undefined;
 
@@ -235,6 +235,8 @@ type LibraryContextValue = {
   setLyricsEnabled: (enabled: boolean) => void;
   sortTracks: (sort: LibrarySort) => LibraryTrack[];
   updateTrackMetadata: (trackId: string, patch: MetadataPatch) => void;
+  /** Deletes the song file from the device (the system may ask for confirmation). Returns true if it was deleted. */
+  deleteTrack: (trackId: string) => Promise<boolean>;
 };
 
 const LibraryContext = createContext<LibraryContextValue | null>(null);
@@ -256,6 +258,13 @@ export function LibraryProvider({ children }: PropsWithChildren) {
   const pauseRequestedRef = useRef(false);
   const scanProgressRef = useRef({ processed: 0, total: 0 });
   const checkpointRef = useRef<(() => void) | null>(null);
+  // Scans must wait until the saved library is loaded; otherwise the cache looks empty and every song is re-read.
+  const hydrationRef = useRef<{ promise: Promise<void>; resolve: () => void } | null>(null);
+  if (!hydrationRef.current) {
+    let resolve: () => void = () => undefined;
+    const promise = new Promise<void>((done) => { resolve = done; });
+    hydrationRef.current = { promise, resolve };
+  }
   const { replaceQueue, mergeIntoQueue, updateQueueTrack } = useAudioPlayerController();
 
   useEffect(() => {
@@ -301,6 +310,7 @@ export function LibraryProvider({ children }: PropsWithChildren) {
       if (savedArtwork !== null) setArtworkEnabledState(savedArtwork !== "false");
       if (savedLyrics !== null) setLyricsEnabledState(savedLyrics !== "false");
       setStorageHydrated(true);
+      hydrationRef.current?.resolve();
     })();
   }, [replaceQueue]);
 
@@ -337,6 +347,7 @@ export function LibraryProvider({ children }: PropsWithChildren) {
 
     updateScan({ status: "scanning", processed: 0, total: 0, message: "Checking this device for music" });
     try {
+      await hydrationRef.current?.promise;
       if (!(await MediaLibrary.isAvailableAsync())) {
         updateScan({ status: "unavailable", processed: 0, total: 0, message: "Media access is not available on this device" });
         return;
@@ -446,7 +457,7 @@ export function LibraryProvider({ children }: PropsWithChildren) {
       };
 
       // Read a few files at a time and publish results in batches so the list stays responsive while scanning.
-      const CONCURRENCY = 4;
+      const CONCURRENCY = 8;
       const pending: LibraryTrack[] = [];
       let lastFlush = Date.now();
       const flush = (force = false) => {
@@ -491,9 +502,17 @@ export function LibraryProvider({ children }: PropsWithChildren) {
       }
       flush(true);
 
-      const merged = mergeScannedTracks(restoredTracks, scanned);
+      let merged = mergeScannedTracks(restoredTracks, scanned);
+      // Drop songs that were deleted from the device. Skipped if the device reported no music at all
+      // (e.g. permission problems) so a bad read can never wipe the whole library.
+      if (assets.length > 0) {
+        const deviceIds = new Set(assets.map((asset) => asset.id));
+        merged = merged.filter((track) => deviceIds.has(track.id));
+      }
       setTracks(merged);
       replaceQueue(merged.map(queueTrackFromLibrary));
+      // Save right away (not after the 4s delay) so closing the app can't lose this scan and force a full rescan.
+      if (LIBRARY_FILE) await FileSystem.writeAsStringAsync(LIBRARY_FILE, JSON.stringify(prepareTracksForPersistence(merged))).catch(() => undefined);
       const newCount = Math.max(0, scanned.length - cachedCount);
       updateScan({ status: "complete", processed: assets.length, total: assets.length, lastScannedAt: Date.now(), message: scanned.length ? `${cachedCount} cached, ${newCount} new music track${newCount === 1 ? "" : "s"} ready` : "No music found on this device" });
     } catch {
@@ -583,8 +602,23 @@ export function LibraryProvider({ children }: PropsWithChildren) {
     });
   }, [updateQueueTrack]);
 
+  const deleteTrack = useCallback(async (trackId: string) => {
+    if (Platform.OS === "web") return false;
+    try {
+      const deleted = await MediaLibrary.deleteAssetsAsync([trackId]);
+      if (!deleted) return false;
+    } catch {
+      return false;
+    }
+    const next = tracksRef.current.filter((track) => track.id !== trackId);
+    tracksRef.current = next;
+    setTracks(next);
+    replaceQueue(next.map(queueTrackFromLibrary));
+    return true;
+  }, [replaceQueue]);
+
   const sortTracks = useCallback((sort: LibrarySort) => sortLibraryTracks(tracks, sort), [tracks]);
-  const value = useMemo(() => ({ tracks, scanState, refreshLibrary, pauseScan, resumeScan, cancelScan, artworkEnabled, lyricsEnabled, setArtworkEnabled, setLyricsEnabled, sortTracks, updateTrackMetadata }), [artworkEnabled, cancelScan, lyricsEnabled, pauseScan, refreshLibrary, resumeScan, scanState, setArtworkEnabled, setLyricsEnabled, sortTracks, tracks, updateTrackMetadata]);
+  const value = useMemo(() => ({ tracks, scanState, refreshLibrary, pauseScan, resumeScan, cancelScan, artworkEnabled, lyricsEnabled, setArtworkEnabled, setLyricsEnabled, sortTracks, updateTrackMetadata, deleteTrack }), [artworkEnabled, cancelScan, lyricsEnabled, pauseScan, refreshLibrary, resumeScan, scanState, setArtworkEnabled, setLyricsEnabled, sortTracks, tracks, updateTrackMetadata, deleteTrack]);
   return <LibraryContext.Provider value={value}>{children}</LibraryContext.Provider>;
 }
 

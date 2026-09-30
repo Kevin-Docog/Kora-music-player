@@ -1,3 +1,4 @@
+import { useLibraryController } from "@/lib/library-context";
 import { createContext, PropsWithChildren, useContext, useMemo, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useEffect } from "react";
@@ -57,6 +58,18 @@ export function deletePlaylistState(playlists: Playlist[], playlistId: string) {
   return playlists.filter((playlist) => playlist.id !== playlistId);
 }
 
+/** Removes ids of songs that no longer exist from every playlist. Returns the same array when nothing changed. */
+export function pruneMissingTracksState(playlists: Playlist[], validIds: Set<string>) {
+  let changed = false;
+  const next = playlists.map((playlist) => {
+    const trackIds = playlist.trackIds.filter((id) => validIds.has(id));
+    if (trackIds.length === playlist.trackIds.length) return playlist;
+    changed = true;
+    return { ...playlist, trackIds, count: `${trackIds.length} tracks` };
+  });
+  return changed ? next : playlists;
+}
+
 export function PlaylistProvider({ children }: PropsWithChildren) {
   const [playlists, setPlaylists] = useState(INITIAL_PLAYLISTS);
   const [loaded, setLoaded] = useState(false);
@@ -73,6 +86,14 @@ export function PlaylistProvider({ children }: PropsWithChildren) {
   useEffect(() => {
     if (loaded) void AsyncStorage.setItem("kora.playlists", JSON.stringify(playlists));
   }, [loaded, playlists]);
+
+  // After a finished scan (or a delete) the library is the source of truth: forget songs that are gone.
+  const { tracks, scanState } = useLibraryController();
+  useEffect(() => {
+    if (!loaded || scanState.status !== "complete" || tracks.length === 0) return;
+    const validIds = new Set(tracks.map((track) => track.id));
+    setPlaylists((current) => pruneMissingTracksState(current, validIds));
+  }, [loaded, scanState.status, tracks]);
 
   const createPlaylist = (title: string) => {
     const playlist = buildPlaylist(title, `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
