@@ -2,7 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 
-import { Alert, FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Alert, FlatList, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { Image } from "expo-image";
 
@@ -915,7 +915,7 @@ export default function LibraryScreen() {
         animationType="slide"
         onRequestClose={() => setEditTrack(null)}
       >
-        <View style={styles.modalBackdrop}>
+        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.modalBackdrop}>
           <View style={styles.editSheet}>
             <View style={styles.sheetHandle} />
 
@@ -944,6 +944,7 @@ export default function LibraryScreen() {
               </Pressable>
             </View>
 
+            <ScrollView style={styles.editScroll} contentContainerStyle={styles.editScrollContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
             <TextInput
               value={draft.title}
               onChangeText={(value) =>
@@ -995,8 +996,11 @@ export default function LibraryScreen() {
               placeholderTextColor="#747d86"
               style={[styles.editInput, styles.lyricsInput]}
               multiline
+              scrollEnabled
               textAlignVertical="top"
             />
+
+            </ScrollView>
 
             <Pressable
               onPress={saveEdit}
@@ -1013,7 +1017,7 @@ export default function LibraryScreen() {
               </Text>
             </Pressable>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {toast && (
@@ -1669,6 +1673,7 @@ const styles = StyleSheet.create({
   },
 
   editSheet: {
+    maxHeight: "92%",
     backgroundColor: "#15181c",
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
@@ -1689,7 +1694,17 @@ const styles = StyleSheet.create({
   },
 
   lyricsInput: {
-    minHeight: 110,
+    height: 130,
+    maxHeight: 130,
+  },
+
+  editScroll: {
+    flexGrow: 0,
+    flexShrink: 1,
+  },
+
+  editScrollContent: {
+    paddingBottom: 4,
   },
 
   permissionSheet: {

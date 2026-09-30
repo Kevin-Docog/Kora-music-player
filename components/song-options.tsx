@@ -102,7 +102,7 @@ export function SongOptions({ open, onClose, track, libraryTrack }: Props) {
                 <TextInput value={draft.title} onChangeText={(value) => setDraft((current) => ({ ...current, title: value }))} placeholder="Title" placeholderTextColor="#747d86" style={styles.input} />
                 <TextInput value={draft.artist} onChangeText={(value) => setDraft((current) => ({ ...current, artist: value }))} placeholder="Artist" placeholderTextColor="#747d86" style={styles.input} />
                 <TextInput value={draft.album} onChangeText={(value) => setDraft((current) => ({ ...current, album: value }))} placeholder="Album" placeholderTextColor="#747d86" style={styles.input} />
-                <TextInput value={draft.lyricsText} onChangeText={(value) => setDraft((current) => ({ ...current, lyricsText: value }))} placeholder="Lyrics or LRC timestamps (optional)" placeholderTextColor="#747d86" style={[styles.input, styles.lyricsInput]} multiline scrollEnabled nestedScrollEnabled textAlignVertical="top" />
+                <TextInput value={draft.lyricsText} onChangeText={(value) => setDraft((current) => ({ ...current, lyricsText: value }))} placeholder="Lyrics or LRC timestamps (optional)" placeholderTextColor="#747d86" style={[styles.input, styles.lyricsInput]} multiline scrollEnabled textAlignVertical="top" />
                 </ScrollView>
                 <Pressable onPress={saveEdit} style={styles.button}><MaterialIcons name="save" size={18} color="#0a0b0d" /><Text style={styles.buttonText}>Save changes</Text></Pressable>
               </>

@@ -55,15 +55,48 @@ const SeekBar = memo(function SeekBar({ seekTo }: { seekTo: (seconds: number) =>
 const LyricsView = memo(function LyricsView({ lines, fallbackText }: { lines: Array<{ time: number; text: string }>; fallbackText?: string }) {
   const { position } = useAudioProgress();
   const scrollRef = useRef<ScrollView>(null);
+  const lineLayouts = useRef<Record<number, { y: number; height: number }>>({});
+  const [viewportHeight, setViewportHeight] = useState(0);
   const activeIndex = getActiveLyricIndex(lines, position);
+  const synced = lines.length > 0;
+
+  // Scroll so the current line sits in the middle of the lyrics area, using the real measured size of each line.
+  const centerLine = useCallback((index: number) => {
+    const layout = lineLayouts.current[index];
+    if (!layout || !viewportHeight) return;
+    scrollRef.current?.scrollTo({ y: Math.max(0, layout.y + layout.height / 2 - viewportHeight / 2), animated: true });
+  }, [viewportHeight]);
+
   useEffect(() => {
-    if (activeIndex < 0) return;
-    scrollRef.current?.scrollTo({ y: Math.max(0, activeIndex * 47 - 100), animated: true });
-  }, [activeIndex]);
+    lineLayouts.current = {};
+  }, [lines]);
+
+  useEffect(() => {
+    if (activeIndex >= 0) centerLine(activeIndex);
+  }, [activeIndex, centerLine]);
+
   return (
-    <ScrollView ref={scrollRef} style={styles.lyricContent} contentContainerStyle={styles.lyricContentInner} showsVerticalScrollIndicator={false}>
-      <Text style={styles.lyricLabel}>LYRICS</Text>
-      {lines.length ? lines.map((line, index) => <Text key={`${line.time}-${index}`} style={index === activeIndex ? styles.lyricActive : styles.lyricMuted}>{line.text}</Text>) : <Text style={styles.lyricMuted}>{fallbackText || "Lyrics are not available for this song."}</Text>}
+    <ScrollView
+      ref={scrollRef}
+      style={styles.lyricContent}
+      onLayout={(event) => setViewportHeight(event.nativeEvent.layout.height)}
+      // Extra space above and below lets the first and last lines reach the middle too.
+      contentContainerStyle={synced ? [styles.lyricContentInner, { paddingVertical: viewportHeight / 2 }] : styles.lyricContentInner}
+      showsVerticalScrollIndicator={false}
+    >
+      {synced ? null : <Text style={styles.lyricLabel}>LYRICS</Text>}
+      {synced ? lines.map((line, index) => (
+        <Text
+          key={`${line.time}-${index}`}
+          onLayout={(event) => {
+            lineLayouts.current[index] = { y: event.nativeEvent.layout.y, height: event.nativeEvent.layout.height };
+            if (index === activeIndex) centerLine(index);
+          }}
+          style={index === activeIndex ? styles.lyricActive : styles.lyricMuted}
+        >
+          {line.text}
+        </Text>
+      )) : <Text style={styles.lyricMuted}>{fallbackText || "Lyrics are not available for this song."}</Text>}
     </ScrollView>
   );
 });
