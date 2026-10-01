@@ -74,3 +74,13 @@ export function orderBySavedIds<T extends { id: string }>(list: T[], savedIds: s
   const unknown = list.filter((item) => !position.has(item.id));
   return [...known, ...unknown];
 }
+
+/** Returns a randomly ordered copy of `list` (Fisher–Yates). */
+export function shuffleList<T>(list: readonly T[], random = Math.random): T[] {
+  const result = [...list];
+  for (let i = result.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.max(0, Math.min(0.999999, random())) * (i + 1));
+    [result[i], result[j]] = [result[j], result[i]];
+  }
+  return result;
+}

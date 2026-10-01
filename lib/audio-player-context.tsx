@@ -5,7 +5,7 @@ import {
 } from "expo-audio";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { createContext, PropsWithChildren, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { getManualNextIndex, getNextQueueIndex, getShuffleNextIndex, orderBySavedIds, type RepeatMode } from "@/lib/playback-utils";
+import { getManualNextIndex, getNextQueueIndex, orderBySavedIds, shuffleList, type RepeatMode } from "@/lib/playback-utils";
 
 export type QueueTrack = {
   id: string;
@@ -93,6 +93,10 @@ export function AudioPlayerProvider({ children }: PropsWithChildren) {
   const finishHandledRef = useRef(false);
   const shufflePlayedRef = useRef<Set<string>>(new Set());
   const customOrderRef = useRef(false);
+  // True when the queue is already in its real shuffled order (so the queue list matches what will play).
+  const shuffledRef = useRef(false);
+  // The order the queue had before it was shuffled, so turning shuffle off can put it back.
+  const unshuffledIdsRef = useRef<string[] | null>(null);
   const savedOrderRef = useRef<string[] | null>(null);
   const orderSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const repeatModeRef = useRef<RepeatMode>("shuffle");
@@ -147,6 +151,7 @@ export function AudioPlayerProvider({ children }: PropsWithChildren) {
         const currentId = queueRef.current[currentIndexRef.current]?.id;
         const reordered = orderBySavedIds(queueRef.current, savedIds);
         customOrderRef.current = true;
+        shuffledRef.current = true;
         queueRef.current = reordered;
         setQueue(reordered);
         const index = currentId ? reordered.findIndex((item) => item.id === currentId) : -1;
@@ -289,9 +294,34 @@ export function AudioPlayerProvider({ children }: PropsWithChildren) {
     const mode = repeatModeRef.current;
     let nextIndex: number;
     if (mode === "shuffle") {
-      const pick = getShuffleNextIndex(queueRef.current.map((item) => item.id), currentIndexRef.current, shufflePlayedRef.current);
-      nextIndex = pick.index;
-      shufflePlayedRef.current = pick.played;
+      const list = queueRef.current;
+      if (list.length <= 1) {
+        nextIndex = list.length === 1 ? 0 : -1;
+      } else {
+        const currentId = list[currentIndexRef.current]?.id;
+        if (!shuffledRef.current) {
+          // First time in shuffle with an unshuffled queue: shuffle what comes after the current song.
+          unshuffledIdsRef.current = list.map((item) => item.id);
+          const head = list.slice(0, currentIndexRef.current + 1);
+          const tail = shuffleList(list.slice(currentIndexRef.current + 1));
+          const reordered = [...head, ...tail];
+          shuffledRef.current = true;
+          customOrderRef.current = true;
+          queueRef.current = reordered;
+          setQueue(reordered);
+        }
+        const ordered = queueRef.current;
+        if (currentIndexRef.current + 1 < ordered.length) {
+          nextIndex = currentIndexRef.current + 1;
+        } else {
+          // Reached the end: start a new shuffled round, never opening with the song that just played.
+          let fresh = shuffleList(ordered);
+          if (fresh[0]?.id === currentId) fresh = [...fresh.slice(1), fresh[0]];
+          queueRef.current = fresh;
+          setQueue(fresh);
+          nextIndex = 0;
+        }
+      }
     } else {
       nextIndex = auto
         ? getNextQueueIndex(currentIndexRef.current, queueRef.current.length, mode)
@@ -347,12 +377,23 @@ export function AudioPlayerProvider({ children }: PropsWithChildren) {
     // Songs that weren't in the given list stay queued after it, so the full library stays available.
     const inList = new Set(list.map((item) => item.id));
     const rest = queueRef.current.filter((item) => !inList.has(item.id));
-    const nextQueue = [...list, ...rest];
+    let nextQueue = [...list, ...rest];
+    let playIndex = startIndex;
+    if (repeatModeRef.current === "shuffle") {
+      // Shuffle on: make the queue the real play order (chosen song first, the rest shuffled).
+      unshuffledIdsRef.current = nextQueue.map((item) => item.id);
+      nextQueue = [list[startIndex], ...shuffleList(list.filter((item) => item.id !== startId)), ...rest];
+      playIndex = 0;
+      shuffledRef.current = true;
+    } else {
+      unshuffledIdsRef.current = null;
+      shuffledRef.current = false;
+    }
     customOrderRef.current = true;
     shufflePlayedRef.current = new Set();
     queueRef.current = nextQueue;
     setQueue(nextQueue);
-    loadTrack(startIndex, true);
+    loadTrack(playIndex, true);
   }, [loadTrack, pushHistory]);
 
   const playMix = useCallback((ordered: QueueTrack[], startId: string) => {
@@ -497,7 +538,33 @@ export function AudioPlayerProvider({ children }: PropsWithChildren) {
   }, []);
 
   const toggleRepeatMode = useCallback(() => {
-    setRepeatMode((mode) => mode === "shuffle" ? "all" : mode === "all" ? "one" : "shuffle");
+    const current = repeatModeRef.current;
+    const nextMode: RepeatMode = current === "shuffle" ? "all" : current === "all" ? "one" : "shuffle";
+    repeatModeRef.current = nextMode;
+    setRepeatMode(nextMode);
+
+    const list = queueRef.current;
+    const currentId = list[currentIndexRef.current]?.id;
+    let reordered: QueueTrack[] | null = null;
+    if (nextMode === "shuffle" && list.length > 1) {
+      // Turning shuffle on: the playing song stays first, everything after it is shuffled.
+      unshuffledIdsRef.current = list.map((item) => item.id);
+      const others = list.filter((item) => item.id !== currentId);
+      reordered = [...list.filter((item) => item.id === currentId), ...shuffleList(others)];
+      shuffledRef.current = true;
+    } else if (current === "shuffle" && nextMode !== "shuffle") {
+      // Turning shuffle off: put the queue back in the order it had before.
+      if (unshuffledIdsRef.current) reordered = orderBySavedIds(list, unshuffledIdsRef.current);
+      unshuffledIdsRef.current = null;
+      shuffledRef.current = false;
+    }
+    if (reordered) {
+      customOrderRef.current = true;
+      queueRef.current = reordered;
+      setQueue(reordered);
+      const index = currentId ? reordered.findIndex((item) => item.id === currentId) : -1;
+      if (index >= 0) { currentIndexRef.current = index; setCurrentIndex(index); }
+    }
   }, []);
 
   const setNormalizeVolume = useCallback((enabled: boolean) => {
