@@ -2,6 +2,7 @@ import { Animated, FlatList, Modal, PanResponder, Pressable, ScrollView, StyleSh
 import { Image } from "expo-image";
 import Reanimated, { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 import { HeartPop, Pulse, PressScale, tapHaptic } from "@/components/fx";
+import { useCoverColor } from "@/lib/cover-color";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -85,26 +86,24 @@ const CoverGlow = memo(function CoverGlow({ color, playing }: { color: string; p
   }, [playing, scale]);
   const animatedStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
   return (
-    <View pointerEvents="none" style={[StyleSheet.absoluteFill, { alignItems: "center", justifyContent: "center" }]}>
-      {/* Same size and position as the cover, so every layer grows outward from its edge. */}
-      <Reanimated.View style={[{ width: "100%", maxWidth: 370, aspectRatio: 1 }, animatedStyle]}>
-        {GLOW_LAYERS.map((layer) => (
-          <View
-            key={layer.grow}
-            style={{
-              position: "absolute",
-              top: -layer.grow,
-              left: -layer.grow,
-              right: -layer.grow,
-              bottom: -layer.grow,
-              borderRadius: 25 + layer.grow,
-              backgroundColor: color,
-              opacity: layer.opacity,
-            }}
-          />
-        ))}
-      </Reanimated.View>
-    </View>
+    // Fills the cover wrapper (same size and place as the cover), so every layer grows outward from the cover's own edge.
+    <Reanimated.View pointerEvents="none" style={[StyleSheet.absoluteFill, animatedStyle]}>
+      {GLOW_LAYERS.map((layer) => (
+        <View
+          key={layer.grow}
+          style={{
+            position: "absolute",
+            top: -layer.grow,
+            left: -layer.grow,
+            right: -layer.grow,
+            bottom: -layer.grow,
+            borderRadius: 25 + layer.grow,
+            backgroundColor: color,
+            opacity: layer.opacity,
+          }}
+        />
+      ))}
+    </Reanimated.View>
   );
 });
 
@@ -195,6 +194,7 @@ export function MiniPlayer({ bottom }: MiniPlayerProps) {
     () => tracks.find((track) => track.id === currentId) ?? tracks.find((track) => track.title === currentTitle),
     [tracks, currentId, currentTitle],
   );
+  const glowColor = useCoverColor(currentTrack?.artworkUri, currentTrack?.tone ?? "#7d1c14");
   const lyricLines = libraryTrack?.lyricLines ?? [];
   const renderQueueRow = useCallback(({ item, index }: { item: QueueTrack; index: number }) => <QueueRow track={item} active={index === currentIndex} onRemove={removeFromQueue} />, [currentIndex, removeFromQueue]);
   const queueKey = useCallback((item: QueueTrack, index: number) => `${item.id}-${index}`, []);
@@ -258,7 +258,7 @@ export function MiniPlayer({ bottom }: MiniPlayerProps) {
             <View {...closePan.panHandlers}><View style={styles.topControls}><Pressable onPress={() => setShowNowPlaying(false)} hitSlop={10}><MaterialIcons name="keyboard-arrow-down" size={34} color="#f9f6f3" /></Pressable><Pressable onPress={() => setShowOptions(true)} hitSlop={10} style={styles.moreButton}><MaterialIcons name="more-vert" size={24} color="#f9f6f3" /></Pressable></View>
             <View style={styles.segmented}><Pressable onPress={() => setViewMode("cover")} style={[styles.segment, viewMode === "cover" && styles.segmentActive]}><Text style={[styles.segmentText, viewMode === "cover" && styles.segmentTextActive]}>COVER</Text></Pressable><Pressable onPress={() => setViewMode("lyric")} style={[styles.segment, viewMode === "lyric" && styles.segmentActive]}><Text style={[styles.segmentText, viewMode === "lyric" && styles.segmentTextActive]}>LYRIC</Text></Pressable></View></View>
 
-            {viewMode === "cover" ? <View style={styles.coverContent} {...coverPan.panHandlers}><CoverGlow color={currentTrack.tone} playing={isPlaying} /><Animated.View style={[styles.largeCover, { transform: [{ translateX: coverShift }] }]}>{currentTrack.artworkUri ? <Image source={{ uri: currentTrack.artworkUri }} style={styles.coverImage} contentFit="cover" /> : <><View style={styles.coverGlow} /><View style={styles.coverCore}><MaterialIcons name="music-note" size={70} color={lime} /></View><Text style={styles.coverBrand}>KORA LOCAL PLAY</Text></>}</Animated.View><View style={styles.trackHeading}><View style={{ flex: 1 }}><Text numberOfLines={1} style={styles.nowTitle}>{currentTrack.title}</Text><Text numberOfLines={1} style={styles.nowArtist}>{currentTrack.artist}</Text></View><Pressable onPress={() => { tapHaptic(favorite ? "light" : "medium"); setFavorite((value) => !value); }} hitSlop={10}><HeartPop active={favorite}><MaterialIcons name={favorite ? "favorite" : "favorite-border"} size={33} color={favorite ? lime : "#f9f6f3"} /></HeartPop></Pressable></View></View> : <LyricsView lines={lyricLines} fallbackText={libraryTrack?.lyricsText} />}
+            {viewMode === "cover" ? <View style={styles.coverContent} {...coverPan.panHandlers}><Animated.View style={[styles.coverWrap, { transform: [{ translateX: coverShift }] }]}><CoverGlow color={glowColor} playing={isPlaying} /><View style={styles.largeCover}>{currentTrack.artworkUri ? <Image source={{ uri: currentTrack.artworkUri }} style={styles.coverImage} contentFit="cover" /> : <><View style={styles.coverGlow} /><View style={styles.coverCore}><MaterialIcons name="music-note" size={70} color={lime} /></View><Text style={styles.coverBrand}>KORA LOCAL PLAY</Text></>}</View></Animated.View><View style={styles.trackHeading}><View style={{ flex: 1 }}><Text numberOfLines={1} style={styles.nowTitle}>{currentTrack.title}</Text><Text numberOfLines={1} style={styles.nowArtist}>{currentTrack.artist}</Text></View><Pressable onPress={() => { tapHaptic(favorite ? "light" : "medium"); setFavorite((value) => !value); }} hitSlop={10}><HeartPop active={favorite}><MaterialIcons name={favorite ? "favorite" : "favorite-border"} size={33} color={favorite ? lime : "#f9f6f3"} /></HeartPop></Pressable></View></View> : <LyricsView lines={lyricLines} fallbackText={libraryTrack?.lyricsText} />}
 
             <SeekBar seekTo={seekTo} />
             <View style={styles.transport}><PressScale onPress={toggleRepeatMode} haptic="select" scaleTo={0.85} hitSlop={12}><MaterialIcons name={repeatIcon} size={29} color="#f9f6f3" /></PressScale><PressScale onPress={previous} haptic="light" scaleTo={0.82} hitSlop={12}><MaterialIcons name="skip-previous" size={39} color="#f9f6f3" /></PressScale><Pulse active={isPlaying}><PressScale onPress={togglePlay} haptic="medium" scaleTo={0.9} style={styles.bigPlay}><MaterialIcons name={isPlaying ? "pause" : "play-arrow"} size={39} color={currentTrack.tone} /></PressScale></Pulse><PressScale onPress={next} haptic="light" scaleTo={0.82} hitSlop={12}><MaterialIcons name="skip-next" size={39} color="#f9f6f3" /></PressScale><PressScale onPress={() => setShowQueue(true)} haptic="light" scaleTo={0.85} hitSlop={12}><MaterialIcons name="queue-music" size={30} color="#f9f6f3" /></PressScale></View>
@@ -300,6 +300,7 @@ const styles = StyleSheet.create({
   segmentText: { color: "#d9c8c5", fontSize: 12, fontWeight: "800" },
   segmentTextActive: { color: "#ffffff" },
   coverContent: { flex: 1, justifyContent: "center" },
+  coverWrap: { width: "100%", maxWidth: 370, alignSelf: "center" },
   largeCover: { aspectRatio: 1, width: "100%", maxWidth: 370, alignSelf: "center", borderRadius: 25, backgroundColor: "#7d1c14", alignItems: "center", justifyContent: "center", overflow: "hidden" },
   coverImage: { position: "absolute", width: "100%", height: "100%" },
   coverGlow: { position: "absolute", width: "85%", height: "85%", borderRadius: 180, backgroundColor: "rgba(255,255,255,0.08)" },

@@ -1,6 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Animated, { SlideInDown } from "react-native-reanimated";
 import { EqBars, HeartPop, PressScale, SkeletonRows, tapHaptic } from "@/components/fx";
+import { ALPHABET, AlphabetRail, buildLetterIndex } from "@/components/alphabet-rail";
 
 import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 
@@ -25,6 +26,8 @@ import { usePlaylistController } from "@/lib/playlist-context";
 import { getActiveLyricIndex } from "@/lib/lyrics-utils";
 
 const lime = "#c8f34a";
+// Every song row has the same height, so the list can jump to any row instantly and exactly (used by the A–Z strip).
+const ROW_HEIGHT = 80;
 
 const muted = "#9299a3";
 
@@ -98,6 +101,35 @@ export default function LibraryScreen() {
         (track) => track.id,
       ),
     [favorites, filter, deferredQuery, sortedTracks],
+  );
+
+  const listRef = useRef<FlatList<LibraryTrack>>(null);
+  // Where the first song row starts (everything above it: padding + the header block).
+  const [listTop, setListTop] = useState(0);
+  const getItemLayout = useCallback(
+    (_: ArrayLike<LibraryTrack> | null | undefined, index: number) => ({ length: ROW_HEIGHT, offset: listTop + ROW_HEIGHT * index, index }),
+    [listTop],
+  );
+
+  // A–Z strip: only for the "Song A–Z" sort. Maps each letter to the first song starting with it.
+  const letterIndex = useMemo(
+    () => (sort === "title" ? buildLetterIndex(filteredTracks.map((track) => track.title)) : null),
+    [sort, filteredTracks],
+  );
+
+  const jumpToLetter = useCallback(
+    (letter: string) => {
+      if (!letterIndex || filteredTracks.length === 0) return;
+      // Letters with no songs jump to the next letter that has some (or the end of the list).
+      const start = ALPHABET.indexOf(letter);
+      let target = -1;
+      for (let i = start; i < ALPHABET.length; i += 1) {
+        if (letterIndex[ALPHABET[i]] !== undefined) { target = letterIndex[ALPHABET[i]]; break; }
+      }
+      if (target < 0) target = filteredTracks.length - 1;
+      listRef.current?.scrollToOffset({ offset: listTop + ROW_HEIGHT * target, animated: false });
+    },
+    [letterIndex, filteredTracks.length, listTop],
   );
 
   const sortLabel =
@@ -268,12 +300,14 @@ export default function LibraryScreen() {
   return (
     <ScreenContainer containerClassName="bg-[#0a0b0d]" className="px-5">
       <FlatList
+        ref={listRef}
+        getItemLayout={getItemLayout}
         data={filteredTracks}
         keyExtractor={trackKeyExtractor}
         renderItem={renderTrack}
         extraData={[favorites, currentTrack?.id, isPlaying]}
         ListHeaderComponent={
-          <View>
+          <View onLayout={(event) => { const { y, height } = event.nativeEvent.layout; setListTop((current) => (Math.abs(current - (y + height)) > 0.5 ? y + height : current)); }}>
             <View style={styles.header}>
               <View>
                 <Text style={styles.eyebrow}>YOUR COLLECTION</Text>
@@ -495,6 +529,7 @@ export default function LibraryScreen() {
         windowSize={7}
         removeClippedSubviews
       />
+      {letterIndex && filteredTracks.length > 0 ? <AlphabetRail available={letterIndex} onSelect={jumpToLetter} /> : null}
 
       <Modal
         visible={scanState.status === "denied"}
@@ -1373,6 +1408,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 9,
     paddingVertical: 11,
+    height: ROW_HEIGHT,
     borderBottomWidth: 1,
     borderBottomColor: "#1b1e22",
   },
