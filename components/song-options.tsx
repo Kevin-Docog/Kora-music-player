@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import Animated, { SlideInDown } from "react-native-reanimated";
 import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import type { QueueTrack } from "@/lib/audio-player-context";
@@ -55,9 +56,9 @@ export function SongOptions({ open, onClose, track, libraryTrack }: Props) {
 
   return (
     <>
-      <Modal visible={open} transparent animationType={mode === "menu" ? "fade" : "slide"} onRequestClose={onClose}>
+      <Modal visible={open} transparent animationType="fade" onRequestClose={onClose}>
         <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.backdrop}>
-          <View style={styles.sheet}>
+          <Animated.View entering={SlideInDown.duration(280)} style={styles.sheet}>
             {mode === "menu" ? (
               <>
                 <Text style={styles.kicker}>SONG OPTIONS</Text>
@@ -107,7 +108,7 @@ export function SongOptions({ open, onClose, track, libraryTrack }: Props) {
                 <Pressable onPress={saveEdit} style={styles.button}><MaterialIcons name="save" size={18} color="#0a0b0d" /><Text style={styles.buttonText}>Save changes</Text></Pressable>
               </>
             )}
-          </View>
+          </Animated.View>
         </KeyboardAvoidingView>
       </Modal>
       {toast ? <View pointerEvents="none" style={styles.toast}><Text style={styles.toastText}>{toast}</Text></View> : null}

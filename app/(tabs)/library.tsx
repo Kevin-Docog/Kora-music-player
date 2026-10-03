@@ -1,4 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import Animated, { SlideInDown } from "react-native-reanimated";
+import { EqBars, HeartPop, PressScale, SkeletonRows, tapHaptic } from "@/components/fx";
 
 import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 
@@ -63,7 +65,7 @@ export default function LibraryScreen() {
 
   const lyricsScrollRef = useRef<ScrollView>(null);
 
-  const { playList, currentTrack } = useAudioPlayerController();
+  const { playList, currentTrack, isPlaying } = useAudioPlayerController();
   const { position } = useAudioProgress();
 
   const {
@@ -251,6 +253,8 @@ export default function LibraryScreen() {
     ({ item }: { item: LibraryTrack }) => (
       <TrackRow
         track={item}
+        isCurrent={currentTrack?.id === item.id}
+        isPlaying={isPlaying}
         isFavorite={favoriteSet.has(item.id)}
         onPlay={playLibraryTrack}
         onToggleFavorite={toggleFavorite}
@@ -258,7 +262,7 @@ export default function LibraryScreen() {
         onMenu={setMenuTrack}
       />
     ),
-    [favoriteSet, sortedTracks, playList],
+    [favoriteSet, sortedTracks, playList, currentTrack?.id, isPlaying],
   );
 
   return (
@@ -267,7 +271,7 @@ export default function LibraryScreen() {
         data={filteredTracks}
         keyExtractor={trackKeyExtractor}
         renderItem={renderTrack}
-        extraData={favorites}
+        extraData={[favorites, currentTrack?.id, isPlaying]}
         ListHeaderComponent={
           <View>
             <View style={styles.header}>
@@ -452,6 +456,7 @@ export default function LibraryScreen() {
           </View>
         }
         ListEmptyComponent={
+          isScanning && tracks.length === 0 ? <SkeletonRows count={7} /> :
           <View style={styles.empty}>
             <MaterialIcons
               name={
@@ -544,7 +549,7 @@ export default function LibraryScreen() {
         onRequestClose={() => setMenuTrack(null)}
       >
         <View style={styles.modalBackdrop}>
-          <View style={styles.sortSheet}>
+          <Animated.View entering={SlideInDown.duration(280)} style={styles.sortSheet}>
             <Text style={styles.sheetKicker}>SONG OPTIONS</Text>
 
             <Text
@@ -633,7 +638,7 @@ export default function LibraryScreen() {
             >
               <Text style={styles.cancelText}>Close</Text>
             </Pressable>
-          </View>
+          </Animated.View>
         </View>
       </Modal>
 
@@ -644,7 +649,7 @@ export default function LibraryScreen() {
         onRequestClose={() => setShowSort(false)}
       >
         <View style={styles.modalBackdrop}>
-          <View style={styles.sortSheet}>
+          <Animated.View entering={SlideInDown.duration(280)} style={styles.sortSheet}>
             <Text style={styles.sheetKicker}>SORT LIBRARY</Text>
 
             <Text style={styles.sheetTitle}>Choose an order</Text>
@@ -684,18 +689,18 @@ export default function LibraryScreen() {
             >
               <Text style={styles.cancelText}>Close</Text>
             </Pressable>
-          </View>
+          </Animated.View>
         </View>
       </Modal>
 
       <Modal
         visible={!!lyricsTrack}
         transparent
-        animationType="slide"
+        animationType="fade"
         onRequestClose={() => setLyricsTrack(null)}
       >
         <View style={styles.modalBackdrop}>
-          <View style={styles.lyricsSheet}>
+          <Animated.View entering={SlideInDown.duration(280)} style={styles.lyricsSheet}>
             <View style={styles.sheetHandle} />
 
             <View style={styles.sheetHeader}>
@@ -752,18 +757,18 @@ export default function LibraryScreen() {
                 </Text>
               )}
             </ScrollView>
-          </View>
+          </Animated.View>
         </View>
       </Modal>
 
       <Modal
         visible={!!moodTrack}
         transparent
-        animationType="slide"
+        animationType="fade"
         onRequestClose={closeMood}
       >
         <View style={styles.modalBackdrop}>
-          <View style={styles.moodSheet}>
+          <Animated.View entering={SlideInDown.duration(280)} style={styles.moodSheet}>
             <View style={styles.sheetHandle} />
 
             <View style={styles.sheetHeader}>
@@ -905,18 +910,18 @@ export default function LibraryScreen() {
                 </Pressable>
               </>
             )}
-          </View>
+          </Animated.View>
         </View>
       </Modal>
 
       <Modal
         visible={!!editTrack}
         transparent
-        animationType="slide"
+        animationType="fade"
         onRequestClose={() => setEditTrack(null)}
       >
         <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.modalBackdrop}>
-          <View style={styles.editSheet}>
+          <Animated.View entering={SlideInDown.duration(280)} style={styles.editSheet}>
             <View style={styles.sheetHandle} />
 
             <View style={styles.sheetHeader}>
@@ -1016,7 +1021,7 @@ export default function LibraryScreen() {
                 Save changes
               </Text>
             </Pressable>
-          </View>
+          </Animated.View>
         </KeyboardAvoidingView>
       </Modal>
 
@@ -1045,6 +1050,8 @@ export default function LibraryScreen() {
 
 type TrackRowProps = {
   track: LibraryTrack;
+  isCurrent: boolean;
+  isPlaying: boolean;
   isFavorite: boolean;
   onPlay: (track: LibraryTrack) => void;
   onToggleFavorite: (id: string) => void;
@@ -1056,6 +1063,8 @@ const trackKeyExtractor = (track: LibraryTrack) => track.id;
 
 const TrackRow = memo(function TrackRow({
   track,
+  isCurrent,
+  isPlaying,
   isFavorite,
   onPlay,
   onToggleFavorite,
@@ -1063,12 +1072,10 @@ const TrackRow = memo(function TrackRow({
   onMenu,
 }: TrackRowProps) {
   return (
-    <Pressable
+    <PressScale
       onPress={() => onPlay(track)}
-      style={({ pressed }) => [
-        styles.trackRow,
-        pressed && styles.pressed,
-      ]}
+      scaleTo={0.975}
+      style={styles.trackRow}
     >
       <View
         style={[
@@ -1093,7 +1100,7 @@ const TrackRow = memo(function TrackRow({
       <View style={{ flex: 1 }}>
         <Text
           numberOfLines={1}
-          style={styles.trackTitle}
+          style={[styles.trackTitle, isCurrent && { color: lime }]}
         >
           {track.title}
         </Text>
@@ -1126,6 +1133,8 @@ const TrackRow = memo(function TrackRow({
             </Pressable>
           )}
 
+          {isCurrent ? <EqBars playing={isPlaying} /> : null}
+
           <Text style={styles.duration}>
             {track.duration}
           </Text>
@@ -1135,19 +1144,22 @@ const TrackRow = memo(function TrackRow({
       <Pressable
         onPress={(event) => {
           event.stopPropagation();
+          tapHaptic(isFavorite ? "light" : "medium");
           onToggleFavorite(track.id);
         }}
         hitSlop={10}
       >
-        <MaterialIcons
-          name={
-            isFavorite
-              ? "favorite"
-              : "favorite-border"
-          }
-          size={20}
-          color={isFavorite ? lime : "#707780"}
-        />
+        <HeartPop active={isFavorite}>
+          <MaterialIcons
+            name={
+              isFavorite
+                ? "favorite"
+                : "favorite-border"
+            }
+            size={20}
+            color={isFavorite ? lime : "#707780"}
+          />
+        </HeartPop>
       </Pressable>
 
       <Pressable
@@ -1163,7 +1175,7 @@ const TrackRow = memo(function TrackRow({
           color="#707780"
         />
       </Pressable>
-    </Pressable>
+    </PressScale>
   );
 });
 

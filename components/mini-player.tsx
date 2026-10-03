@@ -1,5 +1,7 @@
 import { Animated, FlatList, Modal, PanResponder, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { Image } from "expo-image";
+import Reanimated, { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
+import { HeartPop, Pulse, PressScale, tapHaptic } from "@/components/fx";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -52,6 +54,71 @@ const SeekBar = memo(function SeekBar({ seekTo }: { seekTo: (seconds: number) =>
   );
 });
 
+/** One lyric line: the current line grows and brightens, lines further away fade out. */
+const LyricLine = memo(function LyricLine({ text, distance, onLayout }: { text: string; distance: number; onLayout: (event: { nativeEvent: { layout: { y: number; height: number } } }) => void }) {
+  const progress = useSharedValue(distance === 0 ? 1 : 0);
+  const fade = useSharedValue(Math.max(0.25, 0.7 - Math.min(distance, 4) * 0.12));
+  useEffect(() => {
+    progress.value = withTiming(distance === 0 ? 1 : 0, { duration: 320 });
+    fade.value = withTiming(distance === 0 ? 1 : Math.max(0.25, 0.7 - Math.min(distance, 4) * 0.12), { duration: 320 });
+  }, [distance, progress, fade]);
+  const animatedStyle = useAnimatedStyle(() => ({ opacity: fade.value, transform: [{ scale: 0.88 + progress.value * 0.12 }] }));
+  return (
+    <Reanimated.View onLayout={onLayout} style={[{ transformOrigin: "left center" }, animatedStyle]}>
+      <Text style={distance === 0 ? styles.lyricActive : styles.lyricMuted}>{text}</Text>
+    </Reanimated.View>
+  );
+});
+
+/** Soft colored halo that follows the cover's rounded-square border (stacked translucent rounded layers, no blur package needed). */
+const GLOW_LAYERS = [
+  { grow: 6, opacity: 0.28 },
+  { grow: 14, opacity: 0.2 },
+  { grow: 24, opacity: 0.13 },
+  { grow: 36, opacity: 0.08 },
+  { grow: 50, opacity: 0.04 },
+];
+const CoverGlow = memo(function CoverGlow({ color, playing }: { color: string; playing: boolean }) {
+  const scale = useSharedValue(1);
+  useEffect(() => {
+    scale.value = withTiming(playing ? 1.03 : 0.98, { duration: 700 });
+  }, [playing, scale]);
+  const animatedStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+  return (
+    <View pointerEvents="none" style={[StyleSheet.absoluteFill, { alignItems: "center", justifyContent: "center" }]}>
+      {/* Same size and position as the cover, so every layer grows outward from its edge. */}
+      <Reanimated.View style={[{ width: "100%", maxWidth: 370, aspectRatio: 1 }, animatedStyle]}>
+        {GLOW_LAYERS.map((layer) => (
+          <View
+            key={layer.grow}
+            style={{
+              position: "absolute",
+              top: -layer.grow,
+              left: -layer.grow,
+              right: -layer.grow,
+              bottom: -layer.grow,
+              borderRadius: 25 + layer.grow,
+              backgroundColor: color,
+              opacity: layer.opacity,
+            }}
+          />
+        ))}
+      </Reanimated.View>
+    </View>
+  );
+});
+
+/** Thin progress line along the bottom edge of the mini player. */
+const MiniProgress = memo(function MiniProgress() {
+  const { position, duration } = useAudioProgress();
+  const percent = duration > 0 ? Math.min(100, Math.max(0, (position / duration) * 100)) : 0;
+  return (
+    <View pointerEvents="none" style={{ position: "absolute", left: 14, right: 14, bottom: 0, height: 2, backgroundColor: "rgba(255,255,255,0.06)", borderRadius: 1, overflow: "hidden" }}>
+      <View style={{ width: `${percent}%`, height: 2, backgroundColor: lime }} />
+    </View>
+  );
+});
+
 const LyricsView = memo(function LyricsView({ lines, fallbackText }: { lines: Array<{ time: number; text: string }>; fallbackText?: string }) {
   const { position } = useAudioProgress();
   const scrollRef = useRef<ScrollView>(null);
@@ -86,16 +153,15 @@ const LyricsView = memo(function LyricsView({ lines, fallbackText }: { lines: Ar
     >
       {synced ? null : <Text style={styles.lyricLabel}>LYRICS</Text>}
       {synced ? lines.map((line, index) => (
-        <Text
+        <LyricLine
           key={`${line.time}-${index}`}
+          text={line.text}
+          distance={activeIndex < 0 ? index + 1 : Math.abs(index - activeIndex)}
           onLayout={(event) => {
             lineLayouts.current[index] = { y: event.nativeEvent.layout.y, height: event.nativeEvent.layout.height };
             if (index === activeIndex) centerLine(index);
           }}
-          style={index === activeIndex ? styles.lyricActive : styles.lyricMuted}
-        >
-          {line.text}
-        </Text>
+        />
       )) : <Text style={styles.lyricMuted}>{fallbackText || "Lyrics are not available for this song."}</Text>}
     </ScrollView>
   );
@@ -172,15 +238,16 @@ export function MiniPlayer({ bottom }: MiniPlayerProps) {
     <>
       <View pointerEvents="box-none" style={[styles.floatingWrap, { bottom }]}>
         <View style={styles.playerBar}>
-          <Pressable onPress={() => setShowNowPlaying(true)} style={({ pressed }) => [styles.mainHitArea, pressed && styles.pressed]}>
+          <PressScale onPress={() => setShowNowPlaying(true)} scaleTo={0.98} style={styles.mainHitArea}>
             <View style={[styles.art, { backgroundColor: currentTrack.tone }]}>{currentTrack.artworkUri ? <Image source={{ uri: currentTrack.artworkUri }} style={styles.artImage} /> : <MaterialIcons name="music-note" size={24} color="#f3f5ef" style={{ opacity: 0.8 }} />}</View>
             <View style={styles.copy}>
               <Text numberOfLines={1} style={styles.title}>{currentTrack.title}</Text>
               <Text numberOfLines={1} style={styles.artist}>{currentTrack.artist} · {currentTrack.album}</Text>
             </View>
-          </Pressable>
-          <Pressable onPress={() => setShowQueue(true)} style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}><MaterialIcons name="queue-music" size={21} color={lime} /></Pressable>
-          <Pressable onPress={togglePlay} style={({ pressed }) => [styles.playButton, pressed && styles.pressed]}><MaterialIcons name={isPlaying ? "pause" : "play-arrow"} size={21} color="#0a0b0d" /></Pressable>
+          </PressScale>
+          <PressScale onPress={() => setShowQueue(true)} haptic="light" scaleTo={0.88} style={styles.iconButton}><MaterialIcons name="queue-music" size={21} color={lime} /></PressScale>
+          <Pulse active={isPlaying}><PressScale onPress={togglePlay} haptic="light" scaleTo={0.88} style={styles.playButton}><MaterialIcons name={isPlaying ? "pause" : "play-arrow"} size={21} color="#0a0b0d" /></PressScale></Pulse>
+          <MiniProgress />
         </View>
       </View>
 
@@ -191,10 +258,10 @@ export function MiniPlayer({ bottom }: MiniPlayerProps) {
             <View {...closePan.panHandlers}><View style={styles.topControls}><Pressable onPress={() => setShowNowPlaying(false)} hitSlop={10}><MaterialIcons name="keyboard-arrow-down" size={34} color="#f9f6f3" /></Pressable><Pressable onPress={() => setShowOptions(true)} hitSlop={10} style={styles.moreButton}><MaterialIcons name="more-vert" size={24} color="#f9f6f3" /></Pressable></View>
             <View style={styles.segmented}><Pressable onPress={() => setViewMode("cover")} style={[styles.segment, viewMode === "cover" && styles.segmentActive]}><Text style={[styles.segmentText, viewMode === "cover" && styles.segmentTextActive]}>COVER</Text></Pressable><Pressable onPress={() => setViewMode("lyric")} style={[styles.segment, viewMode === "lyric" && styles.segmentActive]}><Text style={[styles.segmentText, viewMode === "lyric" && styles.segmentTextActive]}>LYRIC</Text></Pressable></View></View>
 
-            {viewMode === "cover" ? <View style={styles.coverContent} {...coverPan.panHandlers}><Animated.View style={[styles.largeCover, { transform: [{ translateX: coverShift }] }]}>{currentTrack.artworkUri ? <Image source={{ uri: currentTrack.artworkUri }} style={styles.coverImage} contentFit="cover" /> : <><View style={styles.coverGlow} /><View style={styles.coverCore}><MaterialIcons name="music-note" size={70} color={lime} /></View><Text style={styles.coverBrand}>KORA LOCAL PLAY</Text></>}</Animated.View><View style={styles.trackHeading}><View style={{ flex: 1 }}><Text numberOfLines={1} style={styles.nowTitle}>{currentTrack.title}</Text><Text numberOfLines={1} style={styles.nowArtist}>{currentTrack.artist}</Text></View><Pressable onPress={() => setFavorite((value) => !value)} hitSlop={10}><MaterialIcons name={favorite ? "favorite" : "favorite-border"} size={33} color={favorite ? lime : "#f9f6f3"} /></Pressable></View></View> : <LyricsView lines={lyricLines} fallbackText={libraryTrack?.lyricsText} />}
+            {viewMode === "cover" ? <View style={styles.coverContent} {...coverPan.panHandlers}><CoverGlow color={currentTrack.tone} playing={isPlaying} /><Animated.View style={[styles.largeCover, { transform: [{ translateX: coverShift }] }]}>{currentTrack.artworkUri ? <Image source={{ uri: currentTrack.artworkUri }} style={styles.coverImage} contentFit="cover" /> : <><View style={styles.coverGlow} /><View style={styles.coverCore}><MaterialIcons name="music-note" size={70} color={lime} /></View><Text style={styles.coverBrand}>KORA LOCAL PLAY</Text></>}</Animated.View><View style={styles.trackHeading}><View style={{ flex: 1 }}><Text numberOfLines={1} style={styles.nowTitle}>{currentTrack.title}</Text><Text numberOfLines={1} style={styles.nowArtist}>{currentTrack.artist}</Text></View><Pressable onPress={() => { tapHaptic(favorite ? "light" : "medium"); setFavorite((value) => !value); }} hitSlop={10}><HeartPop active={favorite}><MaterialIcons name={favorite ? "favorite" : "favorite-border"} size={33} color={favorite ? lime : "#f9f6f3"} /></HeartPop></Pressable></View></View> : <LyricsView lines={lyricLines} fallbackText={libraryTrack?.lyricsText} />}
 
             <SeekBar seekTo={seekTo} />
-            <View style={styles.transport}><Pressable onPress={toggleRepeatMode} hitSlop={12}><MaterialIcons name={repeatIcon} size={29} color="#f9f6f3" /></Pressable><Pressable onPress={previous} hitSlop={12}><MaterialIcons name="skip-previous" size={39} color="#f9f6f3" /></Pressable><Pressable onPress={togglePlay} style={styles.bigPlay}><MaterialIcons name={isPlaying ? "pause" : "play-arrow"} size={39} color={currentTrack.tone} /></Pressable><Pressable onPress={next} hitSlop={12}><MaterialIcons name="skip-next" size={39} color="#f9f6f3" /></Pressable><Pressable onPress={() => setShowQueue(true)} hitSlop={12}><MaterialIcons name="queue-music" size={30} color="#f9f6f3" /></Pressable></View>
+            <View style={styles.transport}><PressScale onPress={toggleRepeatMode} haptic="select" scaleTo={0.85} hitSlop={12}><MaterialIcons name={repeatIcon} size={29} color="#f9f6f3" /></PressScale><PressScale onPress={previous} haptic="light" scaleTo={0.82} hitSlop={12}><MaterialIcons name="skip-previous" size={39} color="#f9f6f3" /></PressScale><Pulse active={isPlaying}><PressScale onPress={togglePlay} haptic="medium" scaleTo={0.9} style={styles.bigPlay}><MaterialIcons name={isPlaying ? "pause" : "play-arrow"} size={39} color={currentTrack.tone} /></PressScale></Pulse><PressScale onPress={next} haptic="light" scaleTo={0.82} hitSlop={12}><MaterialIcons name="skip-next" size={39} color="#f9f6f3" /></PressScale><PressScale onPress={() => setShowQueue(true)} haptic="light" scaleTo={0.85} hitSlop={12}><MaterialIcons name="queue-music" size={30} color="#f9f6f3" /></PressScale></View>
           </View>
           <SongOptions open={showOptions} onClose={() => setShowOptions(false)} track={currentTrack} libraryTrack={libraryTrack} />
         </View>

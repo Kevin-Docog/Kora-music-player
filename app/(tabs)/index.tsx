@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { PressScale } from "@/components/fx";
 import { Image } from "expo-image";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useFocusEffect, useRouter } from "expo-router";
@@ -110,10 +111,10 @@ export default function HomeScreen() {
             <View style={styles.heroText}>
               <Text style={styles.heroTitle}>{mix.length ? "Today\u2019s mix" : "No music yet"}</Text>
               <Text style={styles.heroCopy}>{mix.length ? `${mixArtists.length ? `With ${mixArtists.join(", ")}${new Set(mix.map((track) => track.artist)).size > mixArtists.length ? " and more" : ""}. ` : ""}${favoriteCount ? `Includes ${favoriteCount} of your favorites.` : "Heart songs in Library to get more of your favorites."}` : "Scan your device library to build a mix."}</Text>
-              <Pressable onPress={onMixPress} style={({ pressed }) => [styles.playButton, pressed && styles.buttonPressed]}>
+              <PressScale onPress={onMixPress} haptic="medium" scaleTo={0.94} style={styles.playButton}>
                 <MaterialIcons name={mix.length ? (mixActive && isPlaying ? "pause" : "play-arrow") : "library-music"} size={18} color={ink} />
                 <Text style={styles.playText}>{mix.length ? (mixActive ? (isPlaying ? "Pause mix" : "Resume mix") : "Play mix") : "Open library"}</Text>
-              </Pressable>
+              </PressScale>
             </View>
           </View>
         </View>
@@ -124,14 +125,14 @@ export default function HomeScreen() {
         </View>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalList}>
           {continueListening.length ? continueListening.map((item) => (
-            <Pressable key={item.id} onPress={() => playItem(item)} style={({ pressed }) => [styles.continueCard, pressed && styles.pressed]}>
+            <PressScale key={item.id} onPress={() => playItem(item)} scaleTo={0.96} style={styles.continueCard}>
               <View style={[styles.smallArtwork, { backgroundColor: item.tone }]}>
                 {item.artworkUri ? <Image source={{ uri: item.artworkUri }} style={styles.artworkImage} /> : <MaterialIcons name="music-note" size={34} color="#f3f4ee" style={{ opacity: 0.8 }} />}
                 <MaterialIcons name="play-circle" size={22} color="#ffffff" style={styles.cardPlay} />
               </View>
               <Text numberOfLines={1} style={styles.cardTitle}>{item.title}</Text>
               <Text numberOfLines={1} style={styles.cardArtist}>{item.artist}</Text>
-            </Pressable>
+            </PressScale>
           )) : <Pressable onPress={() => router.push("/library")} style={styles.emptyLibrary}><MaterialIcons name="music-off" size={25} color={lime} /><View><Text style={styles.emptyTitle}>No music found yet</Text><Text style={styles.emptyCopy}>Scan your device library to get started.</Text></View><MaterialIcons name="chevron-right" size={21} color={lime} /></Pressable>}
         </ScrollView>
       </ScrollView>

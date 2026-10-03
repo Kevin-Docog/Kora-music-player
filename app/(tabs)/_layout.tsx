@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { HapticTab } from "@/components/haptic-tab";
 import { MiniPlayer } from "@/components/mini-player";
+import { BounceIcon } from "@/components/fx";
 
 const tabs = [
   { name: "index", title: "Home", icon: "home-filled" as const, activeIcon: "home" as const },
@@ -48,7 +49,9 @@ export default function TabLayout() {
             options={{
               title: tab.title,
               tabBarIcon: ({ color, focused }) => (
-                <MaterialIcons name={focused ? tab.activeIcon : tab.icon} size={22} color={color} />
+                <BounceIcon focused={focused}>
+                  <MaterialIcons name={focused ? tab.activeIcon : tab.icon} size={22} color={color} />
+                </BounceIcon>
               ),
             }}
           />
